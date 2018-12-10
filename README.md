@@ -13,7 +13,7 @@ macOS 10.11+
 
 ### Downloading and Running
 
-Visit TODO: [http://example.com/](http://example.com/) for the client zip downloads.
+Visit [http://www.lerocia.com/](http://www.lerocia.com/) for the client zip downloads.
 Once the download has finished, unzip the file and run `ClientBuild` to launch the game.
 
 ## Getting Started - Developer
