@@ -7,6 +7,7 @@ public class ServerClient {
   public int connectionId;
   public string playerName;
   public Vector3 position;
+  public float moveTime;
 }
 
 public class Server : MonoBehaviour {
@@ -25,7 +26,7 @@ public class Server : MonoBehaviour {
   private List<ServerClient> clients = new List<ServerClient>();
 
   private float lastMovementUpdate;
-  private float movementUpdateRate = 0.5f;
+  private float movementUpdateRate = 0.05f;
 
   private void Start() {
     NetworkTransport.Init();
@@ -69,7 +70,7 @@ public class Server : MonoBehaviour {
             OnNameIs(connectionId, splitData[1]);
             break;
           case "MYPOSITION":
-            OnMyPosition(connectionId, float.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]));
+            OnMyPosition(connectionId, float.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]), float.Parse(splitData[4]));
             break;
           default:
             Debug.Log("Invalid message : " + msg);
@@ -87,7 +88,7 @@ public class Server : MonoBehaviour {
       lastMovementUpdate = Time.time;
       string m = "ASKPOSITION|";
       foreach (ServerClient sc in clients) {
-        m += sc.connectionId.ToString() + '%' + sc.position.x.ToString() + '%' + sc.position.y.ToString() + '%' + sc.position.z.ToString() + '|';
+        m += sc.connectionId.ToString() + '%' + sc.position.x.ToString() + '%' + sc.position.y.ToString() + '%' + sc.position.z.ToString() + '%' + sc.moveTime.ToString() + '|';
       }
 
       m = m.Trim('|');
@@ -131,8 +132,9 @@ public class Server : MonoBehaviour {
     Send("CNN|" + playerName + '|' + cnnId, reliableChannel, clients);
   }
 
-  private void OnMyPosition(int cnnId, float x, float y, float z) {
-    clients.Find(c=>c.connectionId == cnnId).position = new Vector3(x, y, z);
+  private void OnMyPosition(int cnnId, float x, float y, float z, float time) {
+    clients.Find(c => c.connectionId == cnnId).position = new Vector3(x, y, z);
+    clients.Find(c => c.connectionId == cnnId).moveTime = time;
   }
 
   private void Send(string message, int channelId, int cnnId) {
