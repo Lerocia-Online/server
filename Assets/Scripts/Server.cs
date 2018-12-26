@@ -7,6 +7,7 @@ public class ServerClient {
   public int connectionId;
   public string playerName;
   public Vector3 position;
+  public Quaternion rotation;
   public float moveTime;
 }
 
@@ -22,7 +23,7 @@ public class Server : MonoBehaviour {
 
   private bool isStarted = false;
   private byte error;
-  
+
   private List<ServerClient> clients = new List<ServerClient>();
 
   private float lastMovementUpdate;
@@ -46,7 +47,7 @@ public class Server : MonoBehaviour {
     if (!isStarted) {
       return;
     }
-    
+
     int recHostId;
     int connectionId;
     int channelId;
@@ -57,7 +58,7 @@ public class Server : MonoBehaviour {
     NetworkEventType recData = NetworkTransport.Receive(out recHostId, out connectionId, out channelId, recBuffer,
       bufferSize, out dataSize, out error);
     switch (recData) {
-      case NetworkEventType.ConnectEvent: 
+      case NetworkEventType.ConnectEvent:
         Debug.Log("Player " + connectionId + " has connected");
         OnConnection(connectionId);
         break;
@@ -70,25 +71,30 @@ public class Server : MonoBehaviour {
             OnNameIs(connectionId, splitData[1]);
             break;
           case "MYPOSITION":
-            OnMyPosition(connectionId, float.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]), float.Parse(splitData[4]));
+            OnMyPosition(connectionId, float.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]),
+              float.Parse(splitData[4]), float.Parse(splitData[5]), float.Parse(splitData[6]),
+              float.Parse(splitData[7]), float.Parse(splitData[8]));
             break;
           default:
             Debug.Log("Invalid message : " + msg);
             break;
         }
+
         break;
-      case NetworkEventType.DisconnectEvent: 
+      case NetworkEventType.DisconnectEvent:
         Debug.Log("Player " + connectionId + " has disconnected");
         OnDisconnection(connectionId);
         break;
     }
-    
+
     // Ask player for their position
     if (Time.time - lastMovementUpdate > movementUpdateRate) {
       lastMovementUpdate = Time.time;
       string m = "ASKPOSITION|";
       foreach (ServerClient sc in clients) {
-        m += sc.connectionId.ToString() + '%' + sc.position.x.ToString() + '%' + sc.position.y.ToString() + '%' + sc.position.z.ToString() + '%' + sc.moveTime.ToString() + '|';
+        m += sc.connectionId.ToString() + '%' + sc.position.x.ToString() + '%' + sc.position.y.ToString() + '%' +
+             sc.position.z.ToString() + '%' + sc.rotation.w.ToString() + '%' + sc.rotation.x.ToString() + '%' +
+             sc.rotation.y.ToString() + '%' + sc.rotation.z.ToString() + '%' + sc.moveTime.ToString() + '|';
       }
 
       m = m.Trim('|');
@@ -111,7 +117,7 @@ public class Server : MonoBehaviour {
     }
 
     msg = msg.Trim('|');
-    
+
     // ASKNAME|3|DAVE%1|MICHAEL%2|TEMP%3
     Send(msg, reliableChannel, cnnId);
   }
@@ -132,8 +138,9 @@ public class Server : MonoBehaviour {
     Send("CNN|" + playerName + '|' + cnnId, reliableChannel, clients);
   }
 
-  private void OnMyPosition(int cnnId, float x, float y, float z, float time) {
+  private void OnMyPosition(int cnnId, float x, float y, float z, float rw, float rx, float ry, float rz, float time) {
     clients.Find(c => c.connectionId == cnnId).position = new Vector3(x, y, z);
+    clients.Find(c => c.connectionId == cnnId).rotation = new Quaternion(rx, ry, rz, rw);
     clients.Find(c => c.connectionId == cnnId).moveTime = time;
   }
 
