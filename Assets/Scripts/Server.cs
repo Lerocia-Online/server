@@ -148,7 +148,6 @@ public class Server : MonoBehaviour {
   }
 
   private void OnAttack(int cnnId) {
-    Debug.Log("Received attack request from id: " + cnnId);
     string msg = "ATK|" + cnnId + "|";
     Send(msg, reliableChannel, clients);
   }
