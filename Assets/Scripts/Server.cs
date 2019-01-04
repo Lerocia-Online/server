@@ -76,7 +76,7 @@ public class Server : MonoBehaviour {
               float.Parse(splitData[7]), float.Parse(splitData[8]));
             break;
           case "ATK":
-            OnAttack(connectionId);
+            OnAttack(connectionId, splitData[1]);
             break;
           default:
             Debug.Log("Invalid message : " + msg);
@@ -147,8 +147,8 @@ public class Server : MonoBehaviour {
     clients.Find(c => c.connectionId == cnnId).moveTime = time;
   }
 
-  private void OnAttack(int cnnId) {
-    string msg = "ATK|" + cnnId + "|";
+  private void OnAttack(int cnnId, string time) {
+    string msg = "ATK|" + cnnId + "|" + time;
     Send(msg, reliableChannel, clients);
   }
 
