@@ -75,9 +75,6 @@ public class Server : MonoBehaviour {
               float.Parse(splitData[4]), float.Parse(splitData[5]), float.Parse(splitData[6]),
               float.Parse(splitData[7]), float.Parse(splitData[8]));
             break;
-          case "ATK":
-            OnAttack(connectionId, splitData[1]);
-            break;
           default:
             Debug.Log("Invalid message : " + msg);
             break;
@@ -145,11 +142,6 @@ public class Server : MonoBehaviour {
     clients.Find(c => c.connectionId == cnnId).position = new Vector3(x, y, z);
     clients.Find(c => c.connectionId == cnnId).rotation = new Quaternion(rx, ry, rz, rw);
     clients.Find(c => c.connectionId == cnnId).moveTime = time;
-  }
-
-  private void OnAttack(int cnnId, string time) {
-    string msg = "ATK|" + cnnId + "|" + time;
-    Send(msg, reliableChannel, clients);
   }
 
   private void Send(string message, int channelId, int cnnId) {
