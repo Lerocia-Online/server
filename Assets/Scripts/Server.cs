@@ -78,6 +78,9 @@ public class Server : MonoBehaviour {
           case "ATK":
             OnAttack(connectionId);
             break;
+          case "HIT":
+            OnHit(connectionId, int.Parse(splitData[1]), int.Parse(splitData[2]));
+            break;
           default:
             Debug.Log("Invalid message : " + msg);
             break;
@@ -149,6 +152,11 @@ public class Server : MonoBehaviour {
   
   private void OnAttack(int cnnId) {	
     string msg = "ATK|" + cnnId;
+    Send(msg, reliableChannel, clients);
+  }
+  
+  private void OnHit(int cnnId, int hitId, int damage) {	
+    string msg = "HIT|" + cnnId + "|" + hitId + "|" + damage;
     Send(msg, reliableChannel, clients);
   }
 
