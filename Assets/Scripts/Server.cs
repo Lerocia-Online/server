@@ -75,6 +75,9 @@ public class Server : MonoBehaviour {
               float.Parse(splitData[4]), float.Parse(splitData[5]), float.Parse(splitData[6]),
               float.Parse(splitData[7]), float.Parse(splitData[8]));
             break;
+          case "CHARGE":
+            OnCharge(connectionId);
+            break;
           case "ATK":
             OnAttack(connectionId);
             break;
@@ -148,6 +151,11 @@ public class Server : MonoBehaviour {
     clients.Find(c => c.connectionId == cnnId).position = new Vector3(x, y, z);
     clients.Find(c => c.connectionId == cnnId).rotation = new Quaternion(rx, ry, rz, rw);
     clients.Find(c => c.connectionId == cnnId).moveTime = time;
+  }
+
+  private void OnCharge(int cnnId) {
+    string msg = "CHARGE|" + cnnId;
+    Send(msg, reliableChannel, clients);
   }
   
   private void OnAttack(int cnnId) {	
