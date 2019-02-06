@@ -84,6 +84,9 @@ public class Server : MonoBehaviour {
           case "HIT":
             OnHit(connectionId, int.Parse(splitData[1]), int.Parse(splitData[2]));
             break;
+          case "HEAL":
+            OnHeal(connectionId, int.Parse(splitData[1]), int.Parse(splitData[2]));
+            break;
           default:
             Debug.Log("Invalid message : " + msg);
             break;
@@ -165,6 +168,11 @@ public class Server : MonoBehaviour {
   
   private void OnHit(int cnnId, int hitId, int damage) {	
     string msg = "HIT|" + cnnId + "|" + hitId + "|" + damage;
+    Send(msg, reliableChannel, clients);
+  }
+  
+  private void OnHeal(int cnnId, int healId, int health) {	
+    string msg = "HEAL|" + cnnId + "|" + healId + "|" + health;
     Send(msg, reliableChannel, clients);
   }
 
