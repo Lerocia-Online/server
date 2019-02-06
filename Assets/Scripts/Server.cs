@@ -84,8 +84,8 @@ public class Server : MonoBehaviour {
           case "HIT":
             OnHit(connectionId, int.Parse(splitData[1]), int.Parse(splitData[2]));
             break;
-          case "HEAL":
-            OnHeal(connectionId, int.Parse(splitData[1]), int.Parse(splitData[2]));
+          case "USE":
+            OnUse(connectionId, int.Parse(splitData[1]));
             break;
           default:
             Debug.Log("Invalid message : " + msg);
@@ -171,8 +171,8 @@ public class Server : MonoBehaviour {
     Send(msg, reliableChannel, clients);
   }
   
-  private void OnHeal(int cnnId, int healId, int health) {	
-    string msg = "HEAL|" + cnnId + "|" + healId + "|" + health;
+  private void OnUse(int cnnId, int itemId) {
+    string msg = "USE|" + cnnId + "|" + itemId;
     Send(msg, reliableChannel, clients);
   }
 
