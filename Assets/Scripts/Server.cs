@@ -11,6 +11,11 @@ public class ServerClient {
   public float moveTime;
 }
 
+public class WorldItem {
+  public int itemId;
+  public Vector3 position;
+}
+
 public class Server : MonoBehaviour {
   private const int MAX_CONNECTION = 100;
 
@@ -28,6 +33,8 @@ public class Server : MonoBehaviour {
 
   private float lastMovementUpdate;
   private float movementUpdateRate = 0.05f;
+  
+  private Dictionary<int, WorldItem> worldItems = new Dictionary<int, WorldItem>();
 
   private void Start() {
     NetworkTransport.Init();
@@ -88,7 +95,7 @@ public class Server : MonoBehaviour {
             OnUse(connectionId, int.Parse(splitData[1]));
             break;
           case "DROP":
-            OnDrop(connectionId, int.Parse(splitData[1]));
+            OnDrop(connectionId, int.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]), float.Parse(splitData[4]));
             break;
           default:
             Debug.Log("Invalid message : " + msg);
@@ -130,11 +137,23 @@ public class Server : MonoBehaviour {
     foreach (ServerClient sc in clients) {
       msg += sc.playerName + "%" + sc.connectionId + "|";
     }
-
+    
     msg = msg.Trim('|');
 
     // ASKNAME|3|DAVE%1|MICHAEL%2|TEMP%3
     Send(msg, reliableChannel, cnnId);
+
+    // Send all items placed in the world
+    string itemsMessage = "ITEMS|";
+    foreach (KeyValuePair<int, WorldItem> item in worldItems) {
+      itemsMessage += item.Key + "%" + item.Value.itemId + "%" + item.Value.position.x + "%" + item.Value.position.y +
+                      "%" + item.Value.position.z + "|";
+    }
+
+    itemsMessage = itemsMessage.Trim('|');
+    
+    // ITEMS|0%3%10.12%42.11%4.82|1%2%10.12%42.11%4.82|2%3%10.12%42.11%4.82
+    Send(itemsMessage, reliableChannel, cnnId);
   }
 
   private void OnDisconnection(int cnnId) {
@@ -179,8 +198,13 @@ public class Server : MonoBehaviour {
     Send(msg, reliableChannel, clients);
   }
   
-  private void OnDrop(int cnnId, int itemId) {
-    string msg = "DROP|" + cnnId + "|" + itemId;
+  private void OnDrop(int cnnId, int itemId, float x, float y, float z) {
+    WorldItem item = new WorldItem();
+    item.itemId = itemId;
+    item.position = new Vector3(x, y, z);
+    int worldId = worldItems.Count;
+    worldItems.Add(worldId, item);
+    string msg = "DROP|" + cnnId + "|" + worldId + "|" + itemId + "|" + x + "|" + y + "|" + z;
     Send(msg, reliableChannel, clients);
   }
 
