@@ -87,6 +87,9 @@ public class Server : MonoBehaviour {
           case "USE":
             OnUse(connectionId, int.Parse(splitData[1]));
             break;
+          case "DROP":
+            OnDrop(connectionId, int.Parse(splitData[1]));
+            break;
           default:
             Debug.Log("Invalid message : " + msg);
             break;
@@ -173,6 +176,11 @@ public class Server : MonoBehaviour {
   
   private void OnUse(int cnnId, int itemId) {
     string msg = "USE|" + cnnId + "|" + itemId;
+    Send(msg, reliableChannel, clients);
+  }
+  
+  private void OnDrop(int cnnId, int itemId) {
+    string msg = "DROP|" + cnnId + "|" + itemId;
     Send(msg, reliableChannel, clients);
   }
 
