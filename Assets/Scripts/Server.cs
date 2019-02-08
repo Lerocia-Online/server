@@ -67,6 +67,12 @@ public class Server : MonoBehaviour {
   private string deleteItemForUserEndpoint = "delete_item_for_user.php";
   private string addWorldItemEndpoint = "add_world_item.php";
   private string deleteWorldItemEndpoint = "delete_world_item.php";
+  private string logoutEndpoint = "logout.php";
+  private string logoutAllUsersEndpoint = "logout_all_users.php";
+
+  private void Awake() {
+    StartCoroutine("LogoutAllUsers");
+  }
 
   private void Start() {
     NetworkTransport.Init();
@@ -205,6 +211,33 @@ public class Server : MonoBehaviour {
       Debug.Log(w.error);
     }
   }
+  
+  private IEnumerator Logout(int userId) {
+    form = new WWWForm();
+    form.AddField("user_id", userId);
+
+    WWW w = new WWW(NetworkSettings.API + logoutEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, logout successful
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator LogoutAllUsers() {
+    form = new WWWForm();
+
+    WWW w = new WWW(NetworkSettings.API + logoutAllUsersEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, logout successful
+    } else {
+      Debug.Log(w.error);
+    }
+  }
 
   private void Update() {
     if (!isStarted) {
@@ -316,6 +349,9 @@ public class Server : MonoBehaviour {
   }
 
   private void OnDisconnection(int cnnId) {
+    // Logout player
+    StartCoroutine("Logout", clients.Find(x => x.connectionId == cnnId).userId);
+
     // Remove this player from our client list
     clients.Remove(clients.Find(x => x.connectionId == cnnId));
 
