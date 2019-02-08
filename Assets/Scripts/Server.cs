@@ -6,13 +6,6 @@ using System;
 using System.Collections;
 using System.Linq;
 
-public enum State {
-  CREATED,
-  UPDATED,
-  DELETED,
-  UNCHANGED
-}
-
 public class ServerClient {
   public int connectionId;
   public int userId;
@@ -24,14 +17,13 @@ public class ServerClient {
 }
 
 public class WorldItem {
+  public int world_id;
   public int itemId;
   public Vector3 position;
-  public State state;
 }
 
 public class InventoryItem {
   public int itemId;
-  public State state;
 }
 
 [Serializable]
@@ -65,16 +57,16 @@ public class Server : MonoBehaviour {
 
   private float lastMovementUpdate;
   private float movementUpdateRate = 0.05f;
-  private float lastInventoryUpdate;
-  private float inventoryUpdateRate = 30f;
-  private float lastWorldItemsUpdate;
-  private float worldItemsUpdateRate = 60f;
   
-  private Dictionary<int, WorldItem> worldItems = new Dictionary<int, WorldItem>();
+  private List<WorldItem> worldItems = new List<WorldItem>();
 
   private WWWForm form;
-  private string get_world_items_endpoint = "get_world_items.php";
-  private string get_items_for_user_endpoint = "get_items_for_user.php";
+  private string getWorldItemsEndpoint = "get_world_items.php";
+  private string getItemsForUserEndpoint = "get_items_for_user.php";
+  private string addItemForUserEndpoint = "add_item_for_user.php";
+  private string deleteItemForUserEndpoint = "delete_item_for_user.php";
+  private string addWorldItemEndpoint = "add_world_item.php";
+  private string deleteWorldItemEndpoint = "delete_world_item.php";
 
   private void Start() {
     NetworkTransport.Init();
@@ -94,14 +86,14 @@ public class Server : MonoBehaviour {
   private IEnumerator GetWorldItems() {
     form = new WWWForm();
 
-    WWW w = new WWW(NetworkSettings.API + get_world_items_endpoint, form);
+    WWW w = new WWW(NetworkSettings.API + getWorldItemsEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
       string jsonString = JsonHelper.fixJson(w.text);
       DatabaseWorldItem[] dbi = JsonHelper.FromJson<DatabaseWorldItem>(jsonString);
       foreach (DatabaseWorldItem it in dbi) {
-        AddWorldItem(it.world_id, it.item_id, it.position_x, it.position_y, it.position_z, State.UNCHANGED);
+        AddWorldItem(it.world_id, it.item_id, it.position_x, it.position_y, it.position_z, true);
       }
     } else {
       Debug.Log(w.error);
@@ -115,7 +107,7 @@ public class Server : MonoBehaviour {
 
     form.AddField("user_id", userId);
 
-    WWW w = new WWW(NetworkSettings.API + get_items_for_user_endpoint, form);
+    WWW w = new WWW(NetworkSettings.API + getItemsForUserEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -125,7 +117,6 @@ public class Server : MonoBehaviour {
       foreach (DatabaseItem it in dbi) {
         InventoryItem item = new InventoryItem();
         item.itemId = it.item_id;
-        item.state = State.UNCHANGED;
         clients.Find(x => x.connectionId == cnnId).inventory.Add(item);
       }
       string inventoryMessage = "INVENTORY|";
@@ -136,6 +127,80 @@ public class Server : MonoBehaviour {
     
       // ITEMS|0%3%10.12%42.11%4.82|1%2%10.12%42.11%4.82|2%3%10.12%42.11%4.82
       Send(inventoryMessage, reliableChannel, cnnId);
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator AddItemForUser(int[] args) {
+    form = new WWWForm();
+    int userId = args[0];
+    int itemId = args[1];
+
+    form.AddField("user_id", userId);
+    form.AddField("item_id", itemId);
+
+    WWW w = new WWW(NetworkSettings.API + addItemForUserEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, added successfully
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator DeleteItemForUser(int[] args) {
+    form = new WWWForm();
+    int userId = args[0];
+    int itemId = args[1];
+
+    form.AddField("user_id", userId);
+    form.AddField("item_id", itemId);
+
+    WWW w = new WWW(NetworkSettings.API + deleteItemForUserEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, deleted successfully
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator AddWorldItemCoroutine(float[] args) {
+    form = new WWWForm();
+    int worldId = (int)args[0];
+    int itemId = (int)args[1];
+    float x = args[2];
+    float y = args[3];
+    float z = args[4];
+
+    form.AddField("world_id", worldId);
+    form.AddField("item_id", itemId);
+    form.AddField("position_x", x.ToString());
+    form.AddField("position_y", y.ToString());
+    form.AddField("position_z", z.ToString());
+
+    WWW w = new WWW(NetworkSettings.API + addWorldItemEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, added successfully
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator DeleteWorldItemCoroutine(int worldId) {
+    form = new WWWForm();
+    form.AddField("world_id", worldId);
+
+    WWW w = new WWW(NetworkSettings.API + deleteWorldItemEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, deleted successfully
     } else {
       Debug.Log(w.error);
     }
@@ -216,28 +281,6 @@ public class Server : MonoBehaviour {
       m = m.Trim('|');
       Send(m, unreliableChannel, clients);
     }
-
-    if (Time.time - lastInventoryUpdate > inventoryUpdateRate) {
-      //TODO Update players inventories
-      List<int> toCreate = new List<int>();
-      List<int> toUpdate = new List<int>();
-      List<int> toDelete = new List<int>();
-      foreach (ServerClient sc in clients) {
-        foreach (InventoryItem item in sc.inventory) {
-          if (item.state == State.CREATED) {
-            toCreate.Add(item.itemId);
-          } else if (item.state == State.UPDATED) {
-            toUpdate.Add(item.itemId);
-          } else if (item.state == State.DELETED) {
-            toDelete.Add(item.itemId);
-          }
-        }
-      }
-    }
-
-    if (Time.time - lastWorldItemsUpdate > worldItemsUpdateRate) {
-      //TODO Update world items
-    }
   }
 
   private void OnConnection(int cnnId) {
@@ -261,9 +304,9 @@ public class Server : MonoBehaviour {
 
     // Send all items placed in the world
     string itemsMessage = "ITEMS|";
-    foreach (KeyValuePair<int, WorldItem> item in worldItems) {
-      itemsMessage += item.Key + "%" + item.Value.itemId + "%" + item.Value.position.x + "%" + item.Value.position.y +
-                      "%" + item.Value.position.z + "|";
+    foreach (WorldItem item in worldItems) {
+      itemsMessage += item.world_id + "%" + item.itemId + "%" + item.position.x + "%" + item.position.y +
+                      "%" + item.position.z + "|";
     }
 
     itemsMessage = itemsMessage.Trim('|');
@@ -284,8 +327,8 @@ public class Server : MonoBehaviour {
     // Link the name to the connection Id
     clients.Find(x => x.connectionId == cnnId).playerName = playerName;
     clients.Find(x => x.connectionId == cnnId).userId = userId;
-    int[] myArgs = {userId, cnnId};
-    StartCoroutine("GetItemsForUser", myArgs);
+    int[] ids = {userId, cnnId};
+    StartCoroutine("GetItemsForUser", ids);
 
     // Tell everybody that a new player has connected
     Send("CNN|" + playerName + '|' + cnnId, reliableChannel, clients);
@@ -313,40 +356,52 @@ public class Server : MonoBehaviour {
   }
   
   private void OnUse(int cnnId, int itemId) {
-    clients.Find(x => x.connectionId == cnnId).inventory.First(x => x.itemId == itemId).state = State.DELETED;
+    int[] args = {cnnId, itemId};
+    StartCoroutine("DeleteItemForUser", args);
     string msg = "USE|" + cnnId + "|" + itemId;
     Send(msg, reliableChannel, clients);
   }
   
   private void OnDrop(int cnnId, int itemId, float x, float y, float z) {
-    clients.Find(c => c.connectionId == cnnId).inventory.First(i => i.itemId == itemId).state = State.DELETED;
-    int worldId = worldItems.Count;
-    AddWorldItem(worldId, itemId, x, y, z, State.CREATED);
+    int[] args = {clients.Find(c => c.connectionId == cnnId).userId, itemId};
+    StartCoroutine("DeleteItemForUser", args);
+    int worldId;
+    if (worldItems.Count > 0) {
+      worldId = worldItems[worldItems.Count - 1].world_id + 1;
+    } else {
+      worldId = 0;
+    }
+    AddWorldItem(worldId, itemId, x, y, z);
     string msg = "DROP|" + cnnId + "|" + worldId + "|" + itemId + "|" + x + "|" + y + "|" + z;
     Send(msg, reliableChannel, clients);
   }
 
   private void OnPickup(int cnnId, int worldId) {
-    DeleteWorldItem(worldId);
     InventoryItem item = new InventoryItem();
-    item.state = State.CREATED;
-    item.itemId = worldItems[worldId].itemId;
+    int[] args = {clients.Find(c => c.connectionId == cnnId).userId, worldItems.Find(i => i.world_id == worldId).itemId};
+    StartCoroutine("AddItemForUser", args);
+    item.itemId = worldItems.Find(i => i.world_id == worldId).itemId;
     clients.Find(c => c.connectionId == cnnId).inventory.Add(item);
+    DeleteWorldItem(worldId);
     string msg = "PICKUP|" + cnnId + "|" + worldId;
     Send(msg, reliableChannel, clients);
   }
 
-  private void AddWorldItem(int worldId, int itemId, float x, float y, float z, State state) {
+  private void AddWorldItem(int worldId, int itemId, float x, float y, float z, bool onStart = false) {
     WorldItem item = new WorldItem();
+    item.world_id = worldId;
     item.itemId = itemId;
     item.position = new Vector3(x, y, z);
-    item.state = state;
-    worldItems.Add(worldId, item);
+    worldItems.Add(item);
+    if (!onStart) {
+      float[] args = {worldId, itemId, x, y, z};
+      StartCoroutine("AddWorldItemCoroutine", args);
+    }
   }
 
   private void DeleteWorldItem(int worldId) {
-    // Prime this item to be deleted on the next database update
-    worldItems[worldId].state = State.DELETED;
+    worldItems.Remove(worldItems.Find(i => i.world_id == worldId));
+    StartCoroutine("DeleteWorldItemCoroutine", worldId);
   }
 
   private void Send(string message, int channelId, int cnnId) {
