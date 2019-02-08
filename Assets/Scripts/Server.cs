@@ -46,7 +46,6 @@ class DatabaseWorldItem {
 [Serializable]
 public class DatabaseItem {
   public int item_id;
-  public int amount;
 }
 
 public class Server : MonoBehaviour {
@@ -66,6 +65,10 @@ public class Server : MonoBehaviour {
 
   private float lastMovementUpdate;
   private float movementUpdateRate = 0.05f;
+  private float lastInventoryUpdate;
+  private float inventoryUpdateRate = 30f;
+  private float lastWorldItemsUpdate;
+  private float worldItemsUpdateRate = 60f;
   
   private Dictionary<int, WorldItem> worldItems = new Dictionary<int, WorldItem>();
 
@@ -120,12 +123,10 @@ public class Server : MonoBehaviour {
       DatabaseItem[] dbi = JsonHelper.FromJson<DatabaseItem>(jsonString);
       clients.Find(x => x.connectionId == cnnId).inventory = new List<InventoryItem>();
       foreach (DatabaseItem it in dbi) {
-        for (int i = 0; i < it.amount; i++) {
-          InventoryItem item = new InventoryItem();
-          item.itemId = it.item_id;
-          item.state = State.UNCHANGED;
-          clients.Find(x => x.connectionId == cnnId).inventory.Add(item);
-        }
+        InventoryItem item = new InventoryItem();
+        item.itemId = it.item_id;
+        item.state = State.UNCHANGED;
+        clients.Find(x => x.connectionId == cnnId).inventory.Add(item);
       }
       string inventoryMessage = "INVENTORY|";
       foreach (InventoryItem item in clients.Find(x => x.connectionId == cnnId).inventory) {
@@ -214,6 +215,28 @@ public class Server : MonoBehaviour {
 
       m = m.Trim('|');
       Send(m, unreliableChannel, clients);
+    }
+
+    if (Time.time - lastInventoryUpdate > inventoryUpdateRate) {
+      //TODO Update players inventories
+      List<int> toCreate = new List<int>();
+      List<int> toUpdate = new List<int>();
+      List<int> toDelete = new List<int>();
+      foreach (ServerClient sc in clients) {
+        foreach (InventoryItem item in sc.inventory) {
+          if (item.state == State.CREATED) {
+            toCreate.Add(item.itemId);
+          } else if (item.state == State.UPDATED) {
+            toUpdate.Add(item.itemId);
+          } else if (item.state == State.DELETED) {
+            toDelete.Add(item.itemId);
+          }
+        }
+      }
+    }
+
+    if (Time.time - lastWorldItemsUpdate > worldItemsUpdateRate) {
+      //TODO Update world items
     }
   }
 
