@@ -2,18 +2,51 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
+using System;
+using System.Collections;
+using System.Linq;
+
+public enum State {
+  CREATED,
+  UPDATED,
+  DELETED,
+  UNCHANGED
+}
 
 public class ServerClient {
   public int connectionId;
+  public int userId;
   public string playerName;
   public Vector3 position;
   public Quaternion rotation;
   public float moveTime;
+  public List<InventoryItem> inventory;
 }
 
 public class WorldItem {
   public int itemId;
   public Vector3 position;
+  public State state;
+}
+
+public class InventoryItem {
+  public int itemId;
+  public State state;
+}
+
+[Serializable]
+class DatabaseWorldItem {
+  public int world_id;
+  public int item_id;
+  public float position_x;
+  public float position_y;
+  public float position_z;
+}
+
+[Serializable]
+public class DatabaseItem {
+  public int item_id;
+  public int amount;
 }
 
 public class Server : MonoBehaviour {
@@ -36,6 +69,10 @@ public class Server : MonoBehaviour {
   
   private Dictionary<int, WorldItem> worldItems = new Dictionary<int, WorldItem>();
 
+  private WWWForm form;
+  private string get_world_items_endpoint = "get_world_items.php";
+  private string get_items_for_user_endpoint = "get_items_for_user.php";
+
   private void Start() {
     NetworkTransport.Init();
     ConnectionConfig cc = new ConnectionConfig();
@@ -48,6 +85,59 @@ public class Server : MonoBehaviour {
     hostId = NetworkTransport.AddHost(topo, NetworkSettings.PORT, null);
 
     isStarted = true;
+    StartCoroutine("GetWorldItems");
+  }
+
+  private IEnumerator GetWorldItems() {
+    form = new WWWForm();
+
+    WWW w = new WWW(NetworkSettings.API + get_world_items_endpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      string jsonString = JsonHelper.fixJson(w.text);
+      DatabaseWorldItem[] dbi = JsonHelper.FromJson<DatabaseWorldItem>(jsonString);
+      foreach (DatabaseWorldItem it in dbi) {
+        AddWorldItem(it.world_id, it.item_id, it.position_x, it.position_y, it.position_z, State.UNCHANGED);
+      }
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator GetItemsForUser(int[] ids) {
+    form = new WWWForm();
+    int userId = ids[0];
+    int cnnId = ids[1];
+
+    form.AddField("user_id", userId);
+
+    WWW w = new WWW(NetworkSettings.API + get_items_for_user_endpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      string jsonString = JsonHelper.fixJson(w.text);
+      DatabaseItem[] dbi = JsonHelper.FromJson<DatabaseItem>(jsonString);
+      clients.Find(x => x.connectionId == cnnId).inventory = new List<InventoryItem>();
+      foreach (DatabaseItem it in dbi) {
+        for (int i = 0; i < it.amount; i++) {
+          InventoryItem item = new InventoryItem();
+          item.itemId = it.item_id;
+          item.state = State.UNCHANGED;
+          clients.Find(x => x.connectionId == cnnId).inventory.Add(item);
+        }
+      }
+      string inventoryMessage = "INVENTORY|";
+      foreach (InventoryItem item in clients.Find(x => x.connectionId == cnnId).inventory) {
+        inventoryMessage += item.itemId + "|";
+      }
+      inventoryMessage = inventoryMessage.Trim('|');
+    
+      // ITEMS|0%3%10.12%42.11%4.82|1%2%10.12%42.11%4.82|2%3%10.12%42.11%4.82
+      Send(inventoryMessage, reliableChannel, cnnId);
+    } else {
+      Debug.Log(w.error);
+    }
   }
 
   private void Update() {
@@ -75,7 +165,7 @@ public class Server : MonoBehaviour {
         string[] splitData = msg.Split('|');
         switch (splitData[0]) {
           case "NAMEIS":
-            OnNameIs(connectionId, splitData[1]);
+            OnNameIs(connectionId, splitData[1], int.Parse(splitData[2]));
             break;
           case "MYPOSITION":
             OnMyPosition(connectionId, float.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]),
@@ -96,6 +186,9 @@ public class Server : MonoBehaviour {
             break;
           case "DROP":
             OnDrop(connectionId, int.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]), float.Parse(splitData[4]));
+            break;
+          case "PICKUP":
+            OnPickup(connectionId, int.Parse(splitData[1]));
             break;
           default:
             Debug.Log("Invalid message : " + msg);
@@ -164,9 +257,12 @@ public class Server : MonoBehaviour {
     Send("DC|" + cnnId, reliableChannel, clients);
   }
 
-  private void OnNameIs(int cnnId, string playerName) {
+  private void OnNameIs(int cnnId, string playerName, int userId) {
     // Link the name to the connection Id
     clients.Find(x => x.connectionId == cnnId).playerName = playerName;
+    clients.Find(x => x.connectionId == cnnId).userId = userId;
+    int[] myArgs = {userId, cnnId};
+    StartCoroutine("GetItemsForUser", myArgs);
 
     // Tell everybody that a new player has connected
     Send("CNN|" + playerName + '|' + cnnId, reliableChannel, clients);
@@ -194,18 +290,40 @@ public class Server : MonoBehaviour {
   }
   
   private void OnUse(int cnnId, int itemId) {
+    clients.Find(x => x.connectionId == cnnId).inventory.First(x => x.itemId == itemId).state = State.DELETED;
     string msg = "USE|" + cnnId + "|" + itemId;
     Send(msg, reliableChannel, clients);
   }
   
   private void OnDrop(int cnnId, int itemId, float x, float y, float z) {
+    clients.Find(c => c.connectionId == cnnId).inventory.First(i => i.itemId == itemId).state = State.DELETED;
+    int worldId = worldItems.Count;
+    AddWorldItem(worldId, itemId, x, y, z, State.CREATED);
+    string msg = "DROP|" + cnnId + "|" + worldId + "|" + itemId + "|" + x + "|" + y + "|" + z;
+    Send(msg, reliableChannel, clients);
+  }
+
+  private void OnPickup(int cnnId, int worldId) {
+    DeleteWorldItem(worldId);
+    InventoryItem item = new InventoryItem();
+    item.state = State.CREATED;
+    item.itemId = worldItems[worldId].itemId;
+    clients.Find(c => c.connectionId == cnnId).inventory.Add(item);
+    string msg = "PICKUP|" + cnnId + "|" + worldId;
+    Send(msg, reliableChannel, clients);
+  }
+
+  private void AddWorldItem(int worldId, int itemId, float x, float y, float z, State state) {
     WorldItem item = new WorldItem();
     item.itemId = itemId;
     item.position = new Vector3(x, y, z);
-    int worldId = worldItems.Count;
+    item.state = state;
     worldItems.Add(worldId, item);
-    string msg = "DROP|" + cnnId + "|" + worldId + "|" + itemId + "|" + x + "|" + y + "|" + z;
-    Send(msg, reliableChannel, clients);
+  }
+
+  private void DeleteWorldItem(int worldId) {
+    // Prime this item to be deleted on the next database update
+    worldItems[worldId].state = State.DELETED;
   }
 
   private void Send(string message, int channelId, int cnnId) {
