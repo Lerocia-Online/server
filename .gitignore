@@ -93,5 +93,5 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
-Assets/Scripts/NetworkSettings.cs
-Assets/Scripts/NetworkSettings.cs.meta
+Assets/Scripts/NetworkConstants.cs
+Assets/Scripts/NetworkConstants.cs.meta

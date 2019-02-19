@@ -64,7 +64,7 @@ class DatabaseNPC {
 public class Server : MonoBehaviour {
   private const int MAX_CONNECTION = 100;
 
-  private int port = NetworkSettings.PORT;
+  private int port = NetworkConstants.Port;
 
   private int hostId;
 
@@ -107,7 +107,7 @@ public class Server : MonoBehaviour {
 
     HostTopology topo = new HostTopology(cc, MAX_CONNECTION);
 
-    hostId = NetworkTransport.AddHost(topo, NetworkSettings.PORT, null);
+    hostId = NetworkTransport.AddHost(topo, NetworkConstants.Port, null);
 
     isStarted = true;
     StartCoroutine("GetWorldItems");
@@ -117,7 +117,7 @@ public class Server : MonoBehaviour {
   private IEnumerator GetNPCs() {
     form = new WWWForm();
 
-    WWW w = new WWW(NetworkSettings.API + getNPCsEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + getNPCsEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -135,7 +135,7 @@ public class Server : MonoBehaviour {
   private IEnumerator GetWorldItems() {
     form = new WWWForm();
 
-    WWW w = new WWW(NetworkSettings.API + getWorldItemsEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + getWorldItemsEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -156,7 +156,7 @@ public class Server : MonoBehaviour {
 
     form.AddField("user_id", userId);
 
-    WWW w = new WWW(NetworkSettings.API + getItemsForUserEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + getItemsForUserEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -187,7 +187,7 @@ public class Server : MonoBehaviour {
 
     form.AddField("npc_id", npcId);
 
-    WWW w = new WWW(NetworkSettings.API + getItemsForNPCEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + getItemsForNPCEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -212,7 +212,7 @@ public class Server : MonoBehaviour {
     form.AddField("user_id", userId);
     form.AddField("item_id", itemId);
 
-    WWW w = new WWW(NetworkSettings.API + addItemForUserEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + addItemForUserEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -230,7 +230,7 @@ public class Server : MonoBehaviour {
     form.AddField("user_id", userId);
     form.AddField("item_id", itemId);
 
-    WWW w = new WWW(NetworkSettings.API + deleteItemForUserEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + deleteItemForUserEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -254,7 +254,7 @@ public class Server : MonoBehaviour {
     form.AddField("position_y", y.ToString());
     form.AddField("position_z", z.ToString());
 
-    WWW w = new WWW(NetworkSettings.API + addWorldItemEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + addWorldItemEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -268,7 +268,7 @@ public class Server : MonoBehaviour {
     form = new WWWForm();
     form.AddField("world_id", worldId);
 
-    WWW w = new WWW(NetworkSettings.API + deleteWorldItemEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + deleteWorldItemEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -282,7 +282,7 @@ public class Server : MonoBehaviour {
     form = new WWWForm();
     form.AddField("user_id", userId);
 
-    WWW w = new WWW(NetworkSettings.API + logoutEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + logoutEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -295,7 +295,7 @@ public class Server : MonoBehaviour {
   private IEnumerator LogoutAllUsers() {
     form = new WWWForm();
 
-    WWW w = new WWW(NetworkSettings.API + logoutAllUsersEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + logoutAllUsersEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
