@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System;
 using System.Collections;
-using System.Linq;
+using Networking.Constants;
 
 public class ServerClient {
   public int connectionId;
