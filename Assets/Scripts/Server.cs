@@ -31,6 +31,8 @@ public class NPC {
   public string npcName;
   public Vector3 position;
   public Quaternion rotation;
+  public string type;
+  public int dialogueId;
   public float moveTime;
   public List<InventoryItem> inventory;
 }
@@ -59,6 +61,8 @@ class DatabaseNPC {
   public float rotation_x;
   public float rotation_y;
   public float rotation_z;
+  public string type;
+  public int dialogue_id;
 }
 
 public class Server : MonoBehaviour {
@@ -77,7 +81,7 @@ public class Server : MonoBehaviour {
   private List<ServerClient> clients = new List<ServerClient>();
 
   private float lastMovementUpdate;
-  private float movementUpdateRate = 0.05f;
+  private float movementUpdateRate = 0.5f;
 
   private List<WorldItem> worldItems = new List<WorldItem>();
   private List<NPC> _npcs = new List<NPC>();
@@ -125,7 +129,7 @@ public class Server : MonoBehaviour {
       DatabaseNPC[] dbnpc = JsonHelper.FromJson<DatabaseNPC>(jsonString);
       foreach (DatabaseNPC npc in dbnpc) {
         AddNPC(npc.npc_id, npc.npc_name, npc.position_x, npc.position_y, npc.position_z, npc.rotation_x, npc.rotation_y,
-          npc.rotation_z);
+          npc.rotation_z, npc.type, npc.dialogue_id);
       }
     } else {
       Debug.Log(w.error);
@@ -422,7 +426,7 @@ public class Server : MonoBehaviour {
     foreach (NPC npc in _npcs) {
       npcsMessage += npc.npcId + "%" + npc.npcName + "%" + npc.position.x + "%" + npc.position.y + "%" +
                      npc.position.z + "%" + npc.rotation.eulerAngles.x + "%" + npc.rotation.eulerAngles.y + "%" +
-                     npc.rotation.eulerAngles.z + "|";
+                     npc.rotation.eulerAngles.z + "%" + npc.type + "%" + npc.dialogueId + "|";
     }
 
     npcsMessage = npcsMessage.Trim('|');
@@ -538,12 +542,14 @@ public class Server : MonoBehaviour {
     StartCoroutine("DeleteWorldItemCoroutine", worldId);
   }
 
-  private void AddNPC(int npcId, string npcName, float px, float py, float pz, float rx, float ry, float rz) {
+  private void AddNPC(int npcId, string npcName, float px, float py, float pz, float rx, float ry, float rz, string type, int dialogueId) {
     NPC npc = new NPC();
     npc.npcId = npcId;
     npc.npcName = npcName;
     npc.position = new Vector3(px, py, pz);
     npc.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
+    npc.type = type;
+    npc.dialogueId = dialogueId;
     _npcs.Add(npc);
     StartCoroutine("GetItemsForNPC", npcId);
   }
