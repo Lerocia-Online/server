@@ -13,8 +13,13 @@ public class ServerClient {
   public Vector3 position;
   public Quaternion rotation;
   public string type;
+  public int maxHealth;
+  public int currentHealth;
+  public int maxStamina;
+  public int currentStamina;
+  public int gold;
   public int weapon;
-  public int armor;
+  public int apparel;
   public float moveTime;
   public List<InventoryItem> inventory;
 }
@@ -53,8 +58,13 @@ class DatabaseUser {
   public float rotation_y;
   public float rotation_z;
   public string type;
+  public int max_health;
+  public int current_health;
+  public int max_stamina;
+  public int current_stamina;
+  public int gold;
   public int equipped_weapon;
-  public int equipped_armor;
+  public int equipped_apparel;
 }
 
 [Serializable]
@@ -111,7 +121,7 @@ public class Server : MonoBehaviour {
   private string getNPCsEndpoint = "get_npcs.php";
   private string getItemsForUserEndpoint = "get_items_for_user.php";
   private string getStatsForUserEndpoint = "get_stats_for_user.php";
-  private string setTransformForUserEndpoint = "set_transform_for_user.php";
+  private string setstatsForUserEndpoint = "set_stats_for_user.php";
   private string getItemsForNPCEndpoint = "get_items_for_npc.php";
   private string addItemForUserEndpoint = "add_item_for_user.php";
   private string deleteItemForUserEndpoint = "delete_item_for_user.php";
@@ -223,17 +233,22 @@ public class Server : MonoBehaviour {
       clients.Find(x => x.connectionId == cnnId).position = new Vector3(dbu.position_x, dbu.position_y, dbu.position_z);
       clients.Find(x => x.connectionId == cnnId).rotation = Quaternion.Euler(new Vector3(dbu.rotation_x, dbu.rotation_y, dbu.rotation_z));
       clients.Find(x => x.connectionId == cnnId).type = dbu.type;
+      clients.Find(x => x.connectionId == cnnId).maxHealth = dbu.max_health;
+      clients.Find(x => x.connectionId == cnnId).currentHealth = dbu.current_health;
+      clients.Find(x => x.connectionId == cnnId).maxStamina = dbu.max_stamina;
+      clients.Find(x => x.connectionId == cnnId).currentStamina = dbu.current_stamina;
+      clients.Find(x => x.connectionId == cnnId).gold = dbu.gold;
       clients.Find(x => x.connectionId == cnnId).weapon = dbu.equipped_weapon;
-      clients.Find(x => x.connectionId == cnnId).armor = dbu.equipped_armor;
+      clients.Find(x => x.connectionId == cnnId).apparel = dbu.equipped_apparel;
 
       // Tell everybody that a new player has connected
-      Send("CNN|" + dbu.username + '|' + cnnId + '|' + dbu.position_x + '|' + dbu.position_y + '|' + dbu.position_z + '|' + dbu.rotation_x + '|' + dbu.rotation_y + '|' + dbu.rotation_z + '|' + dbu.type + '|' + dbu.equipped_weapon + '|' + dbu.equipped_armor, reliableChannel, clients);
+      Send("CNN|" + dbu.username + '|' + cnnId + '|' + dbu.position_x + '|' + dbu.position_y + '|' + dbu.position_z + '|' + dbu.rotation_x + '|' + dbu.rotation_y + '|' + dbu.rotation_z + '|' + dbu.type + '|' + dbu.equipped_weapon + '|' + dbu.equipped_apparel + '|' + dbu.max_health + '|' + dbu.current_health + '|' + dbu.max_stamina + '|' + dbu.current_stamina + '|' + dbu.gold, reliableChannel, clients);
     } else {
       Debug.Log(w.error);
     }
   }
   
-  private IEnumerator SetTransformForUser(ServerClient user) {
+  private IEnumerator SetStatsForUser(ServerClient user) {
     form = new WWWForm();
     form.AddField("user_id", user.userId);
     form.AddField("position_x", user.position.x.ToString());
@@ -242,8 +257,16 @@ public class Server : MonoBehaviour {
     form.AddField("rotation_x", user.rotation.eulerAngles.x.ToString());
     form.AddField("rotation_y", user.rotation.eulerAngles.y.ToString());
     form.AddField("rotation_z", user.rotation.eulerAngles.z.ToString());
+    form.AddField("type", user.type);
+    form.AddField("max_health", user.maxHealth);
+    form.AddField("current_health", user.currentHealth);
+    form.AddField("max_stamina", user.maxStamina);
+    form.AddField("current_stamina", user.currentStamina);
+    form.AddField("gold", user.gold);
+    form.AddField("equipped_weapon", user.weapon);
+    form.AddField("equipped_apparel", user.apparel);
 
-    WWW w = new WWW(NetworkConstants.Api + setTransformForUserEndpoint, form);
+    WWW w = new WWW(NetworkConstants.Api + setstatsForUserEndpoint, form);
     yield return w;
 
     if (string.IsNullOrEmpty(w.error)) {
@@ -418,7 +441,7 @@ public class Server : MonoBehaviour {
             OnHitNPC(connectionId, int.Parse(splitData[1]), int.Parse(splitData[2]));
             break;
           case "USE":
-            OnUse(connectionId, int.Parse(splitData[1]));
+            OnUse(connectionId, int.Parse(splitData[1]), splitData[2]);
             break;
           case "DROP":
             OnDrop(connectionId, int.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]),
@@ -468,7 +491,7 @@ public class Server : MonoBehaviour {
     // Request his name and send the name of all the other players
     string msg = "ASKNAME|" + cnnId + "|";
     foreach (ServerClient sc in clients) {
-      msg += sc.playerName + "%" + sc.connectionId + '%' + sc.position.x + '%' + sc.position.y + '%' + sc.position.z + '%' + sc.rotation.eulerAngles.x + '%' + sc.rotation.eulerAngles.y + '%' + sc.rotation.eulerAngles.z + '%' + sc.type + '%' + sc.weapon + '%' + sc.armor + "|";
+      msg += sc.playerName + "%" + sc.connectionId + '%' + sc.position.x + '%' + sc.position.y + '%' + sc.position.z + '%' + sc.rotation.eulerAngles.x + '%' + sc.rotation.eulerAngles.y + '%' + sc.rotation.eulerAngles.z + '%' + sc.type + '%' + sc.weapon + '%' + sc.apparel + '%' + sc.maxHealth + '%' + sc.currentHealth + '%' + sc.maxStamina + '%' + sc.currentStamina + '%' + sc.gold + "|";
     }
 
     msg = msg.Trim('|');
@@ -505,7 +528,7 @@ public class Server : MonoBehaviour {
 
   private void OnDisconnection(int cnnId) {
     // Update players transform
-    StartCoroutine("SetTransformForUser", clients.Find(x => x.connectionId == cnnId));
+    StartCoroutine("SetStatsForUser", clients.Find(x => x.connectionId == cnnId));
     // Logout player
     StartCoroutine("Logout", clients.Find(x => x.connectionId == cnnId).userId);
 
@@ -548,9 +571,24 @@ public class Server : MonoBehaviour {
     Send(msg, reliableChannel, clients);
   }
 
-  private void OnUse(int cnnId, int itemId) {
-    int[] args = {cnnId, itemId};
-    StartCoroutine("DeleteItemForUser", args);
+  private void OnUse(int cnnId, int itemId, string category) {
+    //TODO Fix this method to 'Use' items properly...
+
+    int[] args = {clients.Find(c => c.connectionId == cnnId).userId, itemId};
+    switch (category) {
+      case "Potion":
+        StartCoroutine("DeleteItemForUser", args);
+        break;
+      case "Weapon":
+        clients.Find(c => c.connectionId == cnnId).weapon = itemId;
+        break;
+      case "Apparel":
+        clients.Find(c => c.connectionId == cnnId).apparel = itemId;
+        break;
+      default:
+        Debug.Log("Invalid item category");
+        break;
+    }
     string msg = "USE|" + cnnId + "|" + itemId;
     Send(msg, reliableChannel, clients);
   }
