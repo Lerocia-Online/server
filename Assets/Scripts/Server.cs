@@ -12,6 +12,9 @@ public class ServerClient {
   public string playerName;
   public Vector3 position;
   public Quaternion rotation;
+  public string type;
+  public int weapon;
+  public int armor;
   public float moveTime;
   public List<InventoryItem> inventory;
 }
@@ -35,6 +38,23 @@ public class NPC {
   public int dialogueId;
   public float moveTime;
   public List<InventoryItem> inventory;
+}
+
+[Serializable]
+class DatabaseUser {
+  public bool success;
+  public string error;
+  public int user_id;
+  public string username;
+  public float position_x;
+  public float position_y;
+  public float position_z;
+  public float rotation_x;
+  public float rotation_y;
+  public float rotation_z;
+  public string type;
+  public int equipped_weapon;
+  public int equipped_armor;
 }
 
 [Serializable]
@@ -90,6 +110,8 @@ public class Server : MonoBehaviour {
   private string getWorldItemsEndpoint = "get_world_items.php";
   private string getNPCsEndpoint = "get_npcs.php";
   private string getItemsForUserEndpoint = "get_items_for_user.php";
+  private string getStatsForUserEndpoint = "get_stats_for_user.php";
+  private string setTransformForUserEndpoint = "set_transform_for_user.php";
   private string getItemsForNPCEndpoint = "get_items_for_npc.php";
   private string addItemForUserEndpoint = "add_item_for_user.php";
   private string deleteItemForUserEndpoint = "delete_item_for_user.php";
@@ -181,6 +203,51 @@ public class Server : MonoBehaviour {
       inventoryMessage = inventoryMessage.Trim('|');
 
       Send(inventoryMessage, reliableChannel, cnnId);
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+
+  private IEnumerator GetStatsForUser(int[] ids) {
+    form = new WWWForm();
+    int userId = ids[0];
+    int cnnId = ids[1];
+
+    form.AddField("user_id", userId);
+
+    WWW w = new WWW(NetworkConstants.Api + getStatsForUserEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      DatabaseUser dbu = JsonUtility.FromJson<DatabaseUser>(w.text);
+      clients.Find(x => x.connectionId == cnnId).position = new Vector3(dbu.position_x, dbu.position_y, dbu.position_z);
+      clients.Find(x => x.connectionId == cnnId).rotation = Quaternion.Euler(new Vector3(dbu.rotation_x, dbu.rotation_y, dbu.rotation_z));
+      clients.Find(x => x.connectionId == cnnId).type = dbu.type;
+      clients.Find(x => x.connectionId == cnnId).weapon = dbu.equipped_weapon;
+      clients.Find(x => x.connectionId == cnnId).armor = dbu.equipped_armor;
+
+      // Tell everybody that a new player has connected
+      Send("CNN|" + dbu.username + '|' + cnnId + '|' + dbu.position_x + '|' + dbu.position_y + '|' + dbu.position_z + '|' + dbu.rotation_x + '|' + dbu.rotation_y + '|' + dbu.rotation_z + '|' + dbu.type + '|' + dbu.equipped_weapon + '|' + dbu.equipped_armor, reliableChannel, clients);
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator SetTransformForUser(ServerClient user) {
+    form = new WWWForm();
+    form.AddField("user_id", user.userId);
+    form.AddField("position_x", user.position.x.ToString());
+    form.AddField("position_y", user.position.y.ToString());
+    form.AddField("position_z", user.position.z.ToString());
+    form.AddField("rotation_x", user.rotation.eulerAngles.x.ToString());
+    form.AddField("rotation_y", user.rotation.eulerAngles.y.ToString());
+    form.AddField("rotation_z", user.rotation.eulerAngles.z.ToString());
+
+    WWW w = new WWW(NetworkConstants.Api + setTransformForUserEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, logout successful
     } else {
       Debug.Log(w.error);
     }
@@ -401,7 +468,7 @@ public class Server : MonoBehaviour {
     // Request his name and send the name of all the other players
     string msg = "ASKNAME|" + cnnId + "|";
     foreach (ServerClient sc in clients) {
-      msg += sc.playerName + "%" + sc.connectionId + "|";
+      msg += sc.playerName + "%" + sc.connectionId + '%' + sc.position.x + '%' + sc.position.y + '%' + sc.position.z + '%' + sc.rotation.eulerAngles.x + '%' + sc.rotation.eulerAngles.y + '%' + sc.rotation.eulerAngles.z + '%' + sc.type + '%' + sc.weapon + '%' + sc.armor + "|";
     }
 
     msg = msg.Trim('|');
@@ -437,6 +504,8 @@ public class Server : MonoBehaviour {
   }
 
   private void OnDisconnection(int cnnId) {
+    // Update players transform
+    StartCoroutine("SetTransformForUser", clients.Find(x => x.connectionId == cnnId));
     // Logout player
     StartCoroutine("Logout", clients.Find(x => x.connectionId == cnnId).userId);
 
@@ -452,10 +521,8 @@ public class Server : MonoBehaviour {
     clients.Find(x => x.connectionId == cnnId).playerName = playerName;
     clients.Find(x => x.connectionId == cnnId).userId = userId;
     int[] ids = {userId, cnnId};
+    StartCoroutine("GetStatsForUser", ids);
     StartCoroutine("GetItemsForUser", ids);
-
-    // Tell everybody that a new player has connected
-    Send("CNN|" + playerName + '|' + cnnId, reliableChannel, clients);
   }
 
   private void OnMyPosition(int cnnId, float x, float y, float z, float rw, float rx, float ry, float rz, float time) {
