@@ -8,8 +8,10 @@ namespace Lerocia.Characters.NPCs {
 
     public NPC() { }
 
-    public NPC(string name, GameObject avatar, string type, int maxHealth, int currentHealth, int maxStamina, int currentStamina, int gold, int baseDamage, int baseArmor, int weapon, int apparel,
-      int dialogueId) : base(name, avatar, type, maxHealth, currentHealth, maxStamina, currentStamina, gold, baseDamage, baseArmor, weapon, apparel) {
+    public NPC(string name, GameObject avatar, string type, int maxHealth, int currentHealth, int maxStamina,
+      int currentStamina, int gold, int baseDamage, int baseArmor, int weapon, int apparel,
+      int dialogueId) : base(name, avatar, type, maxHealth, currentHealth, maxStamina, currentStamina, gold, baseDamage,
+      baseArmor, weapon, apparel) {
       DialogueId = dialogueId;
       _dialogues = DialogueList.Dialogues[dialogueId];
     }
