@@ -441,7 +441,7 @@ public class Server : MonoBehaviour {
             OnHitNPC(connectionId, int.Parse(splitData[1]), int.Parse(splitData[2]));
             break;
           case "USE":
-            OnUse(connectionId, int.Parse(splitData[1]), splitData[2]);
+            OnUse(connectionId, int.Parse(splitData[1]));
             break;
           case "DROP":
             OnDrop(connectionId, int.Parse(splitData[1]), float.Parse(splitData[2]), float.Parse(splitData[3]),
@@ -571,24 +571,8 @@ public class Server : MonoBehaviour {
     Send(msg, reliableChannel, clients);
   }
 
-  private void OnUse(int cnnId, int itemId, string category) {
+  private void OnUse(int cnnId, int itemId) {
     //TODO Fix this method to 'Use' items properly...
-
-    int[] args = {clients.Find(c => c.connectionId == cnnId).userId, itemId};
-    switch (category) {
-      case "Potion":
-        StartCoroutine("DeleteItemForUser", args);
-        break;
-      case "Weapon":
-        clients.Find(c => c.connectionId == cnnId).weapon = itemId;
-        break;
-      case "Apparel":
-        clients.Find(c => c.connectionId == cnnId).apparel = itemId;
-        break;
-      default:
-        Debug.Log("Invalid item category");
-        break;
-    }
     string msg = "USE|" + cnnId + "|" + itemId;
     Send(msg, reliableChannel, clients);
   }
