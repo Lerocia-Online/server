@@ -530,6 +530,7 @@ public class Server : MonoBehaviour {
 
   private void OnUse(int cnnId, int itemId) {
     //TODO Fix this method to 'Use' items properly...
+    ItemList.Items[itemId].Use(ConnectedCharacters.Players[cnnId]);
     string msg = "USE|" + cnnId + "|" + itemId;
     Send(msg, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
