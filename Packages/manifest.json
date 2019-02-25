@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.lerocia.common": "https://github.com/Lerocia-Online/Lerocia.git",
+    "com.lerocia.common": "https://github.com/Lerocia-Online/common.git",
     "com.unity.ads": "2.0.8",
     "com.unity.analytics": "3.2.2",
     "com.unity.collab-proxy": "1.2.15",
