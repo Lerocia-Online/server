@@ -410,7 +410,7 @@ public class Server : MonoBehaviour {
         break;
       case NetworkEventType.DataEvent:
         string msg = Encoding.Unicode.GetString(recBuffer, 0, dataSize);
-        Debug.Log("Receiving from " + connectionId + " has sent : " + msg);
+//        Debug.Log("Receiving from " + connectionId + " has sent : " + msg);
         string[] splitData = msg.Split('|');
         switch (splitData[0]) {
           case "NAMEIS":
@@ -523,7 +523,6 @@ public class Server : MonoBehaviour {
 
     npcsMessage = npcsMessage.Trim('|');
 
-    Debug.Log("Sending " + npcsMessage);
     // NPCS|0%Harold|1%Johnny|2%Michelle
     Send(npcsMessage, reliableChannel, cnnId);
   }
@@ -644,7 +643,7 @@ public class Server : MonoBehaviour {
   }
 
   private void Send(string message, int channelId, List<int> connectionIds) {
-    Debug.Log("Sending : " + message);
+//    Debug.Log("Sending : " + message);
     byte[] msg = Encoding.Unicode.GetBytes(message);
     foreach (int connectionId in connectionIds) {
       NetworkTransport.Send(hostId, connectionId, channelId, msg, message.Length * sizeof(char), out error);
