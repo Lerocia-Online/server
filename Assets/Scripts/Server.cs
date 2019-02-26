@@ -15,26 +15,23 @@ using Random = System.Random;
 
 class ServerPlayer : Player {
   private Server _myServer;
+
   public ServerPlayer() {
-    Inventory.BeforeRemove += bindingList_BeforeRemove;
+    Inventory.BeforeRemove += RequestItemDeletion;
     _myServer = GameObject.Find("Server").GetComponent<Server>();
   }
-  
-  void bindingList_BeforeRemove(int deletedItem)
-  {
-    Debug.Log("Deleted item is " + deletedItem);
-    Debug.Log("Deleting " + deletedItem);
+
+  private void RequestItemDeletion(int deletedItem) {
     int[] args = {UserId, deletedItem};
     _myServer.StartCoroutine("DeleteItemForUser", args);
   }
 
-  public override void InitializeInventoryListener() {
+  public override void InitializeOnInventoryChange() {
     Inventory.ListChanged += OnInventoryChange;
   }
 
   protected override void OnInventoryChange(object sender, ListChangedEventArgs e) {
     if (e.ListChangedType == ListChangedType.ItemAdded) {
-      Debug.Log("Adding " + Inventory[e.NewIndex]);
       int[] args = {UserId, Inventory[e.NewIndex]};
       _myServer.StartCoroutine("AddItemForUser", args);
     }
@@ -192,7 +189,8 @@ public class Server : MonoBehaviour {
       foreach (DatabaseItem it in dbi) {
         ConnectedCharacters.Players[cnnId].Inventory.Add(it.item_id);
       }
-      ConnectedCharacters.Players[cnnId].InitializeInventoryListener();
+
+      ConnectedCharacters.Players[cnnId].InitializeOnInventoryChange();
 
       string inventoryMessage = "INVENTORY|";
       foreach (int itemId in ConnectedCharacters.Players[cnnId].Inventory) {
@@ -586,13 +584,6 @@ public class Server : MonoBehaviour {
     ConnectedCharacters.Players[cnnId].Inventory.Remove(itemId);
     Random random = new Random();
     int worldId = random.Next();
-//    int worldId;
-//    //TODO convert world id to GUID
-//    if (ItemList.WorldItems.Count > 0) {
-//      worldId = ItemList.WorldItems[ItemList.WorldItems.Count - 1].GetComponent<ItemReference>().WorldId + 1;
-//    } else {
-//      worldId = 0;
-//    }
 
     AddWorldItem(worldId, itemId, x, y, z);
     string msg = "DROP|" + cnnId + "|" + worldId + "|" + itemId + "|" + x + "|" + y + "|" + z;
