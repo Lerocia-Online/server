@@ -4,37 +4,60 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System;
 using System.Collections;
+using System.ComponentModel;
+using System.Linq;
+using Lerocia.Characters;
+using Lerocia.Characters.NPCs;
+using Lerocia.Characters.Players;
+using Lerocia.Items;
 using Networking.Constants;
+using Random = System.Random;
 
-public class ServerClient {
-  public int connectionId;
-  public int userId;
-  public string playerName;
-  public Vector3 position;
-  public Quaternion rotation;
-  public float moveTime;
-  public List<InventoryItem> inventory;
+class ServerPlayer : Player {
+  private Server _myServer;
+
+  public ServerPlayer() {
+    Inventory.BeforeRemove += RequestItemDeletion;
+    _myServer = GameObject.Find("Server").GetComponent<Server>();
+  }
+
+  private void RequestItemDeletion(int deletedItem) {
+    int[] args = {UserId, deletedItem};
+    _myServer.StartCoroutine("DeleteItemForUser", args);
+  }
+
+  public override void InitializeOnInventoryChange() {
+    Inventory.ListChanged += OnInventoryChange;
+  }
+
+  protected override void OnInventoryChange(object sender, ListChangedEventArgs e) {
+    if (e.ListChangedType == ListChangedType.ItemAdded) {
+      int[] args = {UserId, Inventory[e.NewIndex]};
+      _myServer.StartCoroutine("AddItemForUser", args);
+    }
+  }
 }
 
-public class WorldItem {
-  public int world_id;
-  public int itemId;
-  public Vector3 position;
-}
-
-public class InventoryItem {
-  public int itemId;
-}
-
-public class NPC {
-  public int npcId;
-  public string npcName;
-  public Vector3 position;
-  public Quaternion rotation;
+[Serializable]
+class DatabaseUser {
+  public bool success;
+  public string error;
+  public int user_id;
+  public string username;
+  public float position_x;
+  public float position_y;
+  public float position_z;
+  public float rotation_x;
+  public float rotation_y;
+  public float rotation_z;
   public string type;
-  public int dialogueId;
-  public float moveTime;
-  public List<InventoryItem> inventory;
+  public int max_health;
+  public int current_health;
+  public int max_stamina;
+  public int current_stamina;
+  public int gold;
+  public int equipped_weapon;
+  public int equipped_apparel;
 }
 
 [Serializable]
@@ -78,18 +101,15 @@ public class Server : MonoBehaviour {
   private bool isStarted = false;
   private byte error;
 
-  private List<ServerClient> clients = new List<ServerClient>();
-
   private float lastMovementUpdate;
   private float movementUpdateRate = 0.5f;
-
-  private List<WorldItem> worldItems = new List<WorldItem>();
-  private List<NPC> _npcs = new List<NPC>();
 
   private WWWForm form;
   private string getWorldItemsEndpoint = "get_world_items.php";
   private string getNPCsEndpoint = "get_npcs.php";
   private string getItemsForUserEndpoint = "get_items_for_user.php";
+  private string getStatsForUserEndpoint = "get_stats_for_user.php";
+  private string setstatsForUserEndpoint = "set_stats_for_user.php";
   private string getItemsForNPCEndpoint = "get_items_for_npc.php";
   private string addItemForUserEndpoint = "add_item_for_user.php";
   private string deleteItemForUserEndpoint = "delete_item_for_user.php";
@@ -166,21 +186,84 @@ public class Server : MonoBehaviour {
     if (string.IsNullOrEmpty(w.error)) {
       string jsonString = JsonHelper.fixJson(w.text);
       DatabaseItem[] dbi = JsonHelper.FromJson<DatabaseItem>(jsonString);
-      clients.Find(x => x.connectionId == cnnId).inventory = new List<InventoryItem>();
       foreach (DatabaseItem it in dbi) {
-        InventoryItem item = new InventoryItem();
-        item.itemId = it.item_id;
-        clients.Find(x => x.connectionId == cnnId).inventory.Add(item);
+        ConnectedCharacters.Players[cnnId].Inventory.Add(it.item_id);
       }
 
+      ConnectedCharacters.Players[cnnId].InitializeOnInventoryChange();
+
       string inventoryMessage = "INVENTORY|";
-      foreach (InventoryItem item in clients.Find(x => x.connectionId == cnnId).inventory) {
-        inventoryMessage += item.itemId + "|";
+      foreach (int itemId in ConnectedCharacters.Players[cnnId].Inventory) {
+        inventoryMessage += itemId + "|";
       }
 
       inventoryMessage = inventoryMessage.Trim('|');
 
       Send(inventoryMessage, reliableChannel, cnnId);
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+
+  private IEnumerator GetStatsForUser(int[] ids) {
+    form = new WWWForm();
+    int userId = ids[0];
+    int cnnId = ids[1];
+
+    form.AddField("user_id", userId);
+
+    WWW w = new WWW(NetworkConstants.Api + getStatsForUserEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      DatabaseUser dbu = JsonUtility.FromJson<DatabaseUser>(w.text);
+      ConnectedCharacters.Players[cnnId].Avatar.transform.position =
+        new Vector3(dbu.position_x, dbu.position_y, dbu.position_z);
+      ConnectedCharacters.Players[cnnId].Avatar.transform.rotation =
+        Quaternion.Euler(new Vector3(dbu.rotation_x, dbu.rotation_y, dbu.rotation_z));
+      ConnectedCharacters.Players[cnnId].Type = dbu.type;
+      ConnectedCharacters.Players[cnnId].MaxHealth = dbu.max_health;
+      ConnectedCharacters.Players[cnnId].CurrentHealth = dbu.current_health;
+      ConnectedCharacters.Players[cnnId].MaxStamina = dbu.max_stamina;
+      ConnectedCharacters.Players[cnnId].CurrentStamina = dbu.current_stamina;
+      ConnectedCharacters.Players[cnnId].Gold = dbu.gold;
+      ConnectedCharacters.Players[cnnId].Weapon = dbu.equipped_weapon;
+      ConnectedCharacters.Players[cnnId].Apparel = dbu.equipped_apparel;
+
+      // Tell everybody that a new player has connected
+      Send(
+        "CNN|" + dbu.username + '|' + cnnId + '|' + dbu.position_x + '|' + dbu.position_y + '|' + dbu.position_z + '|' +
+        dbu.rotation_x + '|' + dbu.rotation_y + '|' + dbu.rotation_z + '|' + dbu.type + '|' + dbu.equipped_weapon +
+        '|' + dbu.equipped_apparel + '|' + dbu.max_health + '|' + dbu.current_health + '|' + dbu.max_stamina + '|' +
+        dbu.current_stamina + '|' + dbu.gold, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+
+  private IEnumerator SetStatsForUser(Player player) {
+    form = new WWWForm();
+    form.AddField("user_id", player.UserId);
+    form.AddField("position_x", player.Avatar.transform.position.x.ToString());
+    form.AddField("position_y", player.Avatar.transform.position.y.ToString());
+    form.AddField("position_z", player.Avatar.transform.position.z.ToString());
+    form.AddField("rotation_x", player.Avatar.transform.rotation.eulerAngles.x.ToString());
+    form.AddField("rotation_y", player.Avatar.transform.rotation.eulerAngles.y.ToString());
+    form.AddField("rotation_z", player.Avatar.transform.rotation.eulerAngles.z.ToString());
+    form.AddField("type", player.Type);
+    form.AddField("max_health", player.MaxHealth);
+    form.AddField("current_health", player.CurrentHealth);
+    form.AddField("max_stamina", player.MaxStamina);
+    form.AddField("current_stamina", player.CurrentStamina);
+    form.AddField("gold", player.Gold);
+    form.AddField("equipped_weapon", player.Weapon);
+    form.AddField("equipped_apparel", player.Apparel);
+
+    WWW w = new WWW(NetworkConstants.Api + setstatsForUserEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      // Do nothing, logout successful
     } else {
       Debug.Log(w.error);
     }
@@ -197,11 +280,8 @@ public class Server : MonoBehaviour {
     if (string.IsNullOrEmpty(w.error)) {
       string jsonString = JsonHelper.fixJson(w.text);
       DatabaseItem[] dbi = JsonHelper.FromJson<DatabaseItem>(jsonString);
-      _npcs.Find(x => x.npcId == npcId).inventory = new List<InventoryItem>();
       foreach (DatabaseItem it in dbi) {
-        InventoryItem item = new InventoryItem();
-        item.itemId = it.item_id;
-        _npcs.Find(x => x.npcId == npcId).inventory.Add(item);
+        ConnectedCharacters.NPCs[npcId].Inventory.Add(it.item_id);
       }
     } else {
       Debug.Log(w.error);
@@ -379,29 +459,37 @@ public class Server : MonoBehaviour {
     if (Time.time - lastMovementUpdate > movementUpdateRate) {
       lastMovementUpdate = Time.time;
       string m = "ASKPOSITION|";
-      foreach (ServerClient sc in clients) {
-        m += sc.connectionId.ToString() + '%' + sc.position.x.ToString() + '%' + sc.position.y.ToString() + '%' +
-             sc.position.z.ToString() + '%' + sc.rotation.w.ToString() + '%' + sc.rotation.x.ToString() + '%' +
-             sc.rotation.y.ToString() + '%' + sc.rotation.z.ToString() + '%' + sc.moveTime.ToString() + '|';
+      foreach (int cnnId in ConnectedCharacters.Players.Keys) {
+        Player player = ConnectedCharacters.Players[cnnId];
+        m += cnnId.ToString() + '%' + player.Avatar.transform.position.x.ToString() + '%' +
+             player.Avatar.transform.position.y.ToString() + '%' +
+             player.Avatar.transform.position.z.ToString() + '%' + player.Avatar.transform.rotation.w.ToString() + '%' +
+             player.Avatar.transform.rotation.x.ToString() + '%' +
+             player.Avatar.transform.rotation.y.ToString() + '%' + player.Avatar.transform.rotation.z.ToString() + '%' +
+             player.MoveTime.ToString() + '|';
       }
 
       m = m.Trim('|');
-      Send(m, unreliableChannel, clients);
+      Send(m, unreliableChannel, ConnectedCharacters.Players.Keys.ToList());
     }
   }
 
   private void OnConnection(int cnnId) {
     // Add him to a list
-    ServerClient c = new ServerClient();
-    c.connectionId = cnnId;
-    c.playerName = "TEMP";
-    clients.Add(c);
+    Player player = new ServerPlayer();
+    player.Name = "TEMP";
+    ConnectedCharacters.Players.Add(cnnId, player);
 
     // When the player joins the server, tell him his ID
     // Request his name and send the name of all the other players
     string msg = "ASKNAME|" + cnnId + "|";
-    foreach (ServerClient sc in clients) {
-      msg += sc.playerName + "%" + sc.connectionId + "|";
+    foreach (int connectionId in ConnectedCharacters.Players.Keys) {
+      Player p = ConnectedCharacters.Players[connectionId];
+      msg += p.Name + "%" + connectionId + '%' + p.Avatar.transform.position.x + '%' + p.Avatar.transform.position.y +
+             '%' + p.Avatar.transform.position.z + '%' + p.Avatar.transform.rotation.eulerAngles.x + '%' +
+             p.Avatar.transform.rotation.eulerAngles.y + '%' + p.Avatar.transform.rotation.eulerAngles.z + '%' +
+             p.Type + '%' + p.Weapon + '%' + p.Apparel + '%' + p.MaxHealth + '%' + p.CurrentHealth + '%' +
+             p.MaxStamina + '%' + p.CurrentStamina + '%' + p.Gold + "|";
     }
 
     msg = msg.Trim('|');
@@ -411,9 +499,10 @@ public class Server : MonoBehaviour {
 
     // Send all items placed in the world
     string itemsMessage = "ITEMS|";
-    foreach (WorldItem item in worldItems) {
-      itemsMessage += item.world_id + "%" + item.itemId + "%" + item.position.x + "%" + item.position.y + "%" +
-                      item.position.z + "|";
+    foreach (GameObject item in ItemList.WorldItems.Values) {
+      itemsMessage += item.GetComponent<ItemReference>().WorldId + "%" + item.GetComponent<ItemReference>().ItemId +
+                      "%" + item.transform.position.x + "%" + item.transform.position.y + "%" +
+                      item.transform.position.z + "|";
     }
 
     itemsMessage = itemsMessage.Trim('|');
@@ -423,10 +512,13 @@ public class Server : MonoBehaviour {
 
     // Send all NPCs in the world
     string npcsMessage = "NPCS|";
-    foreach (NPC npc in _npcs) {
-      npcsMessage += npc.npcId + "%" + npc.npcName + "%" + npc.position.x + "%" + npc.position.y + "%" +
-                     npc.position.z + "%" + npc.rotation.eulerAngles.x + "%" + npc.rotation.eulerAngles.y + "%" +
-                     npc.rotation.eulerAngles.z + "%" + npc.type + "%" + npc.dialogueId + "|";
+    foreach (int npcId in ConnectedCharacters.NPCs.Keys) {
+      NPC npc = ConnectedCharacters.NPCs[npcId];
+      npcsMessage += npcId + "%" + npc.Name + "%" + npc.Avatar.transform.position.x + "%" +
+                     npc.Avatar.transform.position.y + "%" +
+                     npc.Avatar.transform.position.z + "%" + npc.Avatar.transform.rotation.eulerAngles.x + "%" +
+                     npc.Avatar.transform.rotation.eulerAngles.y + "%" +
+                     npc.Avatar.transform.rotation.eulerAngles.z + "%" + npc.Type + "%" + npc.DialogueId + "|";
     }
 
     npcsMessage = npcsMessage.Trim('|');
@@ -437,88 +529,78 @@ public class Server : MonoBehaviour {
   }
 
   private void OnDisconnection(int cnnId) {
+    // Update players transform
+    StartCoroutine("SetStatsForUser", ConnectedCharacters.Players[cnnId]);
     // Logout player
-    StartCoroutine("Logout", clients.Find(x => x.connectionId == cnnId).userId);
+    StartCoroutine("Logout", ConnectedCharacters.Players[cnnId].UserId);
 
     // Remove this player from our client list
-    clients.Remove(clients.Find(x => x.connectionId == cnnId));
+    ConnectedCharacters.Players.Remove(cnnId);
 
     // Tell everyone that somebody else has disconnected
-    Send("DC|" + cnnId, reliableChannel, clients);
+    Send("DC|" + cnnId, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
 
   private void OnNameIs(int cnnId, string playerName, int userId) {
     // Link the name to the connection Id
-    clients.Find(x => x.connectionId == cnnId).playerName = playerName;
-    clients.Find(x => x.connectionId == cnnId).userId = userId;
+    ConnectedCharacters.Players[cnnId].Name = playerName;
+    ConnectedCharacters.Players[cnnId].UserId = userId;
     int[] ids = {userId, cnnId};
+    StartCoroutine("GetStatsForUser", ids);
     StartCoroutine("GetItemsForUser", ids);
-
-    // Tell everybody that a new player has connected
-    Send("CNN|" + playerName + '|' + cnnId, reliableChannel, clients);
   }
 
   private void OnMyPosition(int cnnId, float x, float y, float z, float rw, float rx, float ry, float rz, float time) {
-    clients.Find(c => c.connectionId == cnnId).position = new Vector3(x, y, z);
-    clients.Find(c => c.connectionId == cnnId).rotation = new Quaternion(rx, ry, rz, rw);
-    clients.Find(c => c.connectionId == cnnId).moveTime = time;
+    ConnectedCharacters.Players[cnnId].Avatar.transform.position = new Vector3(x, y, z);
+    ConnectedCharacters.Players[cnnId].Avatar.transform.rotation = new Quaternion(rx, ry, rz, rw);
+    ConnectedCharacters.Players[cnnId].MoveTime = time;
   }
 
   private void OnAttack(int cnnId) {
     string msg = "ATK|" + cnnId;
-    Send(msg, reliableChannel, clients);
+    Send(msg, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
 
   private void OnHit(int cnnId, int hitId, int damage) {
     //TODO Remove health from client on server
     string msg = "HIT|" + cnnId + "|" + hitId + "|" + damage;
-    Send(msg, reliableChannel, clients);
+    Send(msg, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
 
   private void OnHitNPC(int cnnId, int hitId, int damage) {
     //TODO Remove health from NPC on server
     string msg = "HITNPC|" + cnnId + "|" + hitId + "|" + damage;
-    Send(msg, reliableChannel, clients);
+    Send(msg, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
 
   private void OnUse(int cnnId, int itemId) {
-    int[] args = {cnnId, itemId};
-    StartCoroutine("DeleteItemForUser", args);
+    //TODO Fix this method to 'Use' items properly...
+    ItemList.Items[itemId].Use(ConnectedCharacters.Players[cnnId]);
     string msg = "USE|" + cnnId + "|" + itemId;
-    Send(msg, reliableChannel, clients);
+    Send(msg, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
 
   private void OnDrop(int cnnId, int itemId, float x, float y, float z) {
-    int[] args = {clients.Find(c => c.connectionId == cnnId).userId, itemId};
-    StartCoroutine("DeleteItemForUser", args);
-    int worldId;
-    if (worldItems.Count > 0) {
-      worldId = worldItems[worldItems.Count - 1].world_id + 1;
-    } else {
-      worldId = 0;
-    }
+    ConnectedCharacters.Players[cnnId].Inventory.Remove(itemId);
+    Random random = new Random();
+    int worldId = random.Next();
 
     AddWorldItem(worldId, itemId, x, y, z);
     string msg = "DROP|" + cnnId + "|" + worldId + "|" + itemId + "|" + x + "|" + y + "|" + z;
-    Send(msg, reliableChannel, clients);
+    Send(msg, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
 
   private void OnPickup(int cnnId, int worldId) {
-    InventoryItem item = new InventoryItem();
-    int[] args =
-      {clients.Find(c => c.connectionId == cnnId).userId, worldItems.Find(i => i.world_id == worldId).itemId};
-    StartCoroutine("AddItemForUser", args);
-    item.itemId = worldItems.Find(i => i.world_id == worldId).itemId;
-    clients.Find(c => c.connectionId == cnnId).inventory.Add(item);
+    ConnectedCharacters.Players[cnnId].Inventory.Add(ItemList.WorldItems[worldId].GetComponent<ItemReference>().ItemId);
     DeleteWorldItem(worldId);
     string msg = "PICKUP|" + cnnId + "|" + worldId;
-    Send(msg, reliableChannel, clients);
+    Send(msg, reliableChannel, ConnectedCharacters.Players.Keys.ToList());
   }
 
   private void OnNPCItems(int cnnId, int npcId) {
     string message = "NPCITEMS|" + npcId + "|";
-    foreach (InventoryItem item in _npcs.Find(c => c.npcId == npcId).inventory) {
-      message += item.itemId + "|";
+    foreach (int itemId in ConnectedCharacters.NPCs[npcId].Inventory) {
+      message += itemId + "|";
     }
 
     message = message.Trim('|');
@@ -526,11 +608,12 @@ public class Server : MonoBehaviour {
   }
 
   private void AddWorldItem(int worldId, int itemId, float x, float y, float z, bool onStart = false) {
-    WorldItem item = new WorldItem();
-    item.world_id = worldId;
-    item.itemId = itemId;
-    item.position = new Vector3(x, y, z);
-    worldItems.Add(item);
+    GameObject item = new GameObject();
+    item.AddComponent<ItemReference>();
+    item.GetComponent<ItemReference>().WorldId = worldId;
+    item.GetComponent<ItemReference>().ItemId = itemId;
+    item.transform.position = new Vector3(x, y, z);
+    ItemList.WorldItems[worldId] = item;
     if (!onStart) {
       float[] args = {worldId, itemId, x, y, z};
       StartCoroutine("AddWorldItemCoroutine", args);
@@ -538,33 +621,33 @@ public class Server : MonoBehaviour {
   }
 
   private void DeleteWorldItem(int worldId) {
-    worldItems.Remove(worldItems.Find(i => i.world_id == worldId));
+    ItemList.WorldItems.Remove(worldId);
     StartCoroutine("DeleteWorldItemCoroutine", worldId);
   }
 
-  private void AddNPC(int npcId, string npcName, float px, float py, float pz, float rx, float ry, float rz, string type, int dialogueId) {
+  private void AddNPC(int npcId, string npcName, float px, float py, float pz, float rx, float ry, float rz,
+    string type, int dialogueId) {
     NPC npc = new NPC();
-    npc.npcId = npcId;
-    npc.npcName = npcName;
-    npc.position = new Vector3(px, py, pz);
-    npc.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
-    npc.type = type;
-    npc.dialogueId = dialogueId;
-    _npcs.Add(npc);
+    npc.Name = npcName;
+    npc.Avatar.transform.position = new Vector3(px, py, pz);
+    npc.Avatar.transform.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
+    npc.Type = type;
+    npc.DialogueId = dialogueId;
+    ConnectedCharacters.NPCs.Add(npcId, npc);
     StartCoroutine("GetItemsForNPC", npcId);
   }
 
   private void Send(string message, int channelId, int cnnId) {
-    List<ServerClient> c = new List<ServerClient>();
-    c.Add(clients.Find(x => x.connectionId == cnnId));
-    Send(message, channelId, c);
+    List<int> connectionIds = new List<int>();
+    connectionIds.Add(cnnId);
+    Send(message, channelId, connectionIds);
   }
 
-  private void Send(string message, int channelId, List<ServerClient> c) {
+  private void Send(string message, int channelId, List<int> connectionIds) {
     Debug.Log("Sending : " + message);
     byte[] msg = Encoding.Unicode.GetBytes(message);
-    foreach (ServerClient sc in c) {
-      NetworkTransport.Send(hostId, sc.connectionId, channelId, msg, message.Length * sizeof(char), out error);
+    foreach (int connectionId in connectionIds) {
+      NetworkTransport.Send(hostId, connectionId, channelId, msg, message.Length * sizeof(char), out error);
     }
   }
 }
