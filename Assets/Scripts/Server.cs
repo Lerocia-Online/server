@@ -340,6 +340,7 @@ public class Server : MonoBehaviour {
   }
 
   private IEnumerator AddItemForPlayer(int[] args) {
+    Debug.Log("Calling add item for character");
     form = new WWWForm();
     int characterId = args[0];
     int itemId = args[1];
@@ -358,6 +359,7 @@ public class Server : MonoBehaviour {
   }
 
   private IEnumerator DeleteItemForPlayer(int[] args) {
+    Debug.Log("Calling delete item for character");
     form = new WWWForm();
     int characterId = args[0];
     int itemId = args[1];
@@ -494,6 +496,9 @@ public class Server : MonoBehaviour {
             break;
           case "NPCITEMS":
             OnNPCItems(characterId, int.Parse(splitData[1]));
+            break;
+          case "BUY":
+            OnBuy(characterId, int.Parse(splitData[1]), int.Parse(splitData[2]));
             break;
           default:
             Debug.Log("Invalid message : " + msg);
@@ -694,6 +699,16 @@ public class Server : MonoBehaviour {
     int connectionId;
     ConnectedCharacters.IdMap.TryGetBySecond(characterId, out connectionId);
     Send(message, reliableChannel, connectionId);
+  }
+  
+  private void OnBuy(int characterId, int merchantId, int itemId) {
+    if (ConnectedCharacters.Characters[characterId].BuyItem(ConnectedCharacters.Characters[merchantId], itemId)) {
+      //TODO This should be handled by an onDelete handler for NPC inventory (similar to Player)
+      int[] args = {merchantId, itemId};
+      StartCoroutine("DeleteItemForPlayer", args);
+    } else {
+      Debug.Log("Item purchase failed");
+    }
   }
 
   private void AddWorldItem(int worldId, int itemId, float x, float y, float z, bool onStart = false) {
