@@ -614,8 +614,10 @@ public class Server : MonoBehaviour {
 
     // Remove this player from our client list
     ConnectedCharacters.Players.Remove(characterId);
+    ConnectedCharacters.Characters.Remove(characterId);
     int connectionId;
     ConnectedCharacters.IdMap.TryGetBySecond(characterId, out connectionId);
+    ConnectedCharacters.IdMap.RemoveByFirst(connectionId);
     ConnectedCharacters.ConnectionIds.Remove(connectionId);
 
     // Tell everyone that somebody else has disconnected
