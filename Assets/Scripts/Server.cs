@@ -22,7 +22,7 @@ class ServerPlayer : Player {
 
   private void RequestItemDeletion(int deletedItem) {
     int[] args = {CharacterId, deletedItem};
-    _myServer.StartCoroutine("DeleteItemForUser", args);
+    _myServer.StartCoroutine("DeleteItemForPlayer", args);
   }
 
   public override void InitializeOnInventoryChange() {
@@ -32,13 +32,13 @@ class ServerPlayer : Player {
   protected override void OnInventoryChange(object sender, ListChangedEventArgs e) {
     if (e.ListChangedType == ListChangedType.ItemAdded) {
       int[] args = {CharacterId, Inventory[e.NewIndex]};
-      _myServer.StartCoroutine("AddItemForUser", args);
+      _myServer.StartCoroutine("AddItemForPlayer", args);
     }
   }
 }
 
 [Serializable]
-class DatabaseCharacter {
+class DatabasePlayer {
   public bool success;
   public string error;
   public int character_id;
@@ -55,6 +55,9 @@ class DatabaseCharacter {
   public int max_stamina;
   public int current_stamina;
   public int gold;
+  public int base_weight;
+  public int base_damage;
+  public int base_armor;
   public int weapon_id;
   public int apparel_id;
   public int dialogue_id;
@@ -91,6 +94,9 @@ class DatabaseNPC {
   public int max_stamina;
   public int current_stamina;
   public int gold;
+  public int base_weight;
+  public int base_damage;
+  public int base_armor;
   public int weapon_id;
   public int apparel_id;
   public int dialogue_id;
@@ -126,7 +132,7 @@ public class Server : MonoBehaviour {
   private string logoutAllPlayersEndpoint = "logout_all_players.php";
 
   private void Awake() {
-    StartCoroutine("LogoutAllUsers");
+    StartCoroutine("LogoutAllPlayers");
   }
 
   private void Start() {
@@ -164,6 +170,9 @@ public class Server : MonoBehaviour {
           npc.max_health, npc.current_health,
           npc.max_stamina, npc.current_stamina,
           npc.gold,
+          npc.base_weight,
+          npc.base_damage,
+          npc.base_armor,
           npc.weapon_id,
           npc.apparel_id,
           npc.dialogue_id
@@ -191,7 +200,7 @@ public class Server : MonoBehaviour {
     }
   }
 
-  private IEnumerator GetItemsForUser(int characterId) {
+  private IEnumerator GetItemsForPlayer(int characterId) {
     form = new WWWForm();
 
     form.AddField("character_id", characterId);
@@ -203,7 +212,6 @@ public class Server : MonoBehaviour {
       string jsonString = JsonHelper.fixJson(w.text);
       DatabaseItem[] dbi = JsonHelper.FromJson<DatabaseItem>(jsonString);
       foreach (DatabaseItem it in dbi) {
-        Debug.Log(it.item_id);
         ConnectedCharacters.Characters[characterId].Inventory.Add(it.item_id);
       }
 
@@ -222,44 +230,66 @@ public class Server : MonoBehaviour {
     }
   }
 
-  private IEnumerator GetStatsForUser(int characterId) {
+  private IEnumerator GetStatsForPlayer(int characterId) {
     form = new WWWForm();
 
     form.AddField("character_id", characterId);
 
     WWW w = new WWW(NetworkConstants.Api + getStatsForCharacterEndpoint, form);
     yield return w;
-
+    Debug.Log(w.text);
     if (string.IsNullOrEmpty(w.error)) {
-      DatabaseCharacter dbc = JsonUtility.FromJson<DatabaseCharacter>(w.text);
-      Debug.Log(w.text);
+      DatabasePlayer dbp = JsonUtility.FromJson<DatabasePlayer>(w.text);
       ConnectedCharacters.Players[characterId].Avatar.transform.position =
-        new Vector3(dbc.position_x, dbc.position_y, dbc.position_z);
+        new Vector3(dbp.position_x, dbp.position_y, dbp.position_z);
       ConnectedCharacters.Players[characterId].Avatar.transform.rotation =
-        Quaternion.Euler(new Vector3(dbc.rotation_x, dbc.rotation_y, dbc.rotation_z));
-      ConnectedCharacters.Players[characterId].CharacterPersonality = dbc.character_personality;
-      ConnectedCharacters.Players[characterId].MaxHealth = dbc.max_health;
-      ConnectedCharacters.Players[characterId].CurrentHealth = dbc.current_health;
-      ConnectedCharacters.Players[characterId].MaxStamina = dbc.max_stamina;
-      ConnectedCharacters.Players[characterId].CurrentStamina = dbc.current_stamina;
-      ConnectedCharacters.Players[characterId].Gold = dbc.gold;
-      ConnectedCharacters.Players[characterId].Weapon = dbc.weapon_id;
-      ConnectedCharacters.Players[characterId].Apparel = dbc.apparel_id;
+        Quaternion.Euler(new Vector3(dbp.rotation_x, dbp.rotation_y, dbp.rotation_z));
+      ConnectedCharacters.Players[characterId].CharacterPersonality = dbp.character_personality;
+      ConnectedCharacters.Players[characterId].MaxHealth = dbp.max_health;
+      ConnectedCharacters.Players[characterId].CurrentHealth = dbp.current_health;
+      ConnectedCharacters.Players[characterId].MaxStamina = dbp.max_stamina;
+      ConnectedCharacters.Players[characterId].CurrentStamina = dbp.current_stamina;
+      ConnectedCharacters.Players[characterId].Gold = dbp.gold;
+      ConnectedCharacters.Players[characterId].BaseWeight = dbp.base_weight;
+      ConnectedCharacters.Players[characterId].BaseDamage = dbp.base_damage;
+      ConnectedCharacters.Players[characterId].BaseArmor = dbp.base_armor;
+      ConnectedCharacters.Players[characterId].WeaponId = dbp.weapon_id;
+      ConnectedCharacters.Players[characterId].ApparelId = dbp.apparel_id;
+      ConnectedCharacters.Players[characterId].DialogueId = dbp.dialogue_id;
+      ConnectedCharacters.Players[characterId].Dialogues = DialogueList.Dialogues[dbp.dialogue_id];
 
       // Tell everybody that a new player has connected
       Send(
-        "CNN|" + dbc.character_name + '|' + characterId + '|' + dbc.position_x + '|' + dbc.position_y + '|' + dbc.position_z + '|' +
-        dbc.rotation_x + '|' + dbc.rotation_y + '|' + dbc.rotation_z + '|' + dbc.character_personality + '|' + dbc.weapon_id +
-        '|' + dbc.apparel_id + '|' + dbc.max_health + '|' + dbc.current_health + '|' + dbc.max_stamina + '|' +
-        dbc.current_stamina + '|' + dbc.gold, reliableChannel, ConnectedCharacters.ConnectionIds);
+        "CNN|" + 
+        characterId + '|' + 
+        dbp.character_name + '|' + 
+        dbp.character_personality + '|' + 
+        dbp.position_x + '|' + 
+        dbp.position_y + '|' + 
+        dbp.position_z + '|' +
+        dbp.rotation_x + '|' + 
+        dbp.rotation_y + '|' + 
+        dbp.rotation_z + '|' + 
+        dbp.max_health + '|' + 
+        dbp.current_health + '|' + 
+        dbp.max_stamina + '|' +
+        dbp.current_stamina + '|' + 
+        dbp.gold + '|' +
+        dbp.base_weight + '|' +
+        dbp.base_damage + '|' +
+        dbp.base_armor + '|' + 
+        dbp.weapon_id + '|' + 
+        dbp.apparel_id + '|' +
+        dbp.dialogue_id,
+        reliableChannel, ConnectedCharacters.ConnectionIds
+      );
     } else {
       Debug.Log(w.error);
     }
   }
 
-  private IEnumerator SetStatsForUser(Player player) {
+  private IEnumerator SetStatsForPlayer(Player player) {
     form = new WWWForm();
-    Debug.Log("Setting stats for " + player.Name + " who's ID is " + player.CharacterId);
     form.AddField("character_id", player.CharacterId);
     form.AddField("character_personality", player.CharacterPersonality);
     form.AddField("position_x", player.Avatar.transform.position.x.ToString());
@@ -273,10 +303,12 @@ public class Server : MonoBehaviour {
     form.AddField("max_stamina", player.MaxStamina);
     form.AddField("current_stamina", player.CurrentStamina);
     form.AddField("gold", player.Gold);
-    form.AddField("weapon_id", player.Weapon);
-    form.AddField("apparel_id", player.Apparel);
-    //TODO Add dialogue ID for Players
-    form.AddField("dialogue_id", -1);
+    form.AddField("base_weight", player.BaseWeight);
+    form.AddField("base_damage", player.BaseDamage);
+    form.AddField("base_armor", player.BaseArmor);
+    form.AddField("weapon_id", player.WeaponId);
+    form.AddField("apparel_id", player.ApparelId);
+    form.AddField("dialogue_id", player.DialogueId);
 
     WWW w = new WWW(NetworkConstants.Api + setStatsForCharacterEndpoint, form);
     yield return w;
@@ -307,7 +339,7 @@ public class Server : MonoBehaviour {
     }
   }
 
-  private IEnumerator AddItemForUser(int[] args) {
+  private IEnumerator AddItemForPlayer(int[] args) {
     form = new WWWForm();
     int characterId = args[0];
     int itemId = args[1];
@@ -325,7 +357,7 @@ public class Server : MonoBehaviour {
     }
   }
 
-  private IEnumerator DeleteItemForUser(int[] args) {
+  private IEnumerator DeleteItemForPlayer(int[] args) {
     form = new WWWForm();
     int characterId = args[0];
     int itemId = args[1];
@@ -395,7 +427,7 @@ public class Server : MonoBehaviour {
     }
   }
 
-  private IEnumerator LogoutAllUsers() {
+  private IEnumerator LogoutAllPlayers() {
     form = new WWWForm();
 
     WWW w = new WWW(NetworkConstants.Api + logoutAllPlayersEndpoint, form);
@@ -426,12 +458,11 @@ public class Server : MonoBehaviour {
     ConnectedCharacters.IdMap.TryGetByFirst(connectionId, out characterId);
     switch (recData) {
       case NetworkEventType.ConnectEvent:
-        Debug.Log("Player " + connectionId + " has connected");
         OnConnection(connectionId);
         break;
       case NetworkEventType.DataEvent:
         string msg = Encoding.Unicode.GetString(recBuffer, 0, dataSize);
-        Debug.Log("Receiving from " + characterId + " has sent : " + msg);
+        Debug.Log("Receiving: " + msg);
         string[] splitData = msg.Split('|');
         switch (splitData[0]) {
           case "NAMEIS":
@@ -471,7 +502,6 @@ public class Server : MonoBehaviour {
 
         break;
       case NetworkEventType.DisconnectEvent:
-        Debug.Log("Player " + characterId + " has disconnected");
         OnDisconnection(characterId);
         break;
     }
@@ -502,11 +532,27 @@ public class Server : MonoBehaviour {
     string msg = "ASKNAME|" + connectionId + "|";
     foreach (int characterId in ConnectedCharacters.Players.Keys) {
       Player p = ConnectedCharacters.Players[characterId];
-      msg += p.Name + "%" + characterId + '%' + p.CharacterId + '%' + p.Avatar.transform.position.x + '%' + p.Avatar.transform.position.y +
-             '%' + p.Avatar.transform.position.z + '%' + p.Avatar.transform.rotation.eulerAngles.x + '%' +
-             p.Avatar.transform.rotation.eulerAngles.y + '%' + p.Avatar.transform.rotation.eulerAngles.z + '%' +
-             p.CharacterPersonality + '%' + p.Weapon + '%' + p.Apparel + '%' + p.MaxHealth + '%' + p.CurrentHealth + '%' +
-             p.MaxStamina + '%' + p.CurrentStamina + '%' + p.Gold + "|";
+      msg += 
+        characterId + "%" + 
+        p.CharacterName + '%' + 
+        p.CharacterPersonality + "%" + 
+        p.Avatar.transform.position.x + '%' + 
+        p.Avatar.transform.position.y +'%' + 
+        p.Avatar.transform.position.z + '%' + 
+        p.Avatar.transform.rotation.eulerAngles.x + '%' +
+        p.Avatar.transform.rotation.eulerAngles.y + '%' + 
+        p.Avatar.transform.rotation.eulerAngles.z + '%' +
+        p.MaxHealth + '%' + 
+        p.CurrentHealth + '%' +
+        p.MaxStamina + '%' + 
+        p.CurrentStamina + '%' + 
+        p.Gold + "%" +
+        p.BaseWeight + "%" +
+        p.BaseArmor + "%" +
+        p.BaseDamage + "%" +
+        p.WeaponId + '%' + 
+        p.ApparelId + '%' + 
+        p.DialogueId + "|";
     }
 
     msg = msg.Trim('|');
@@ -531,11 +577,27 @@ public class Server : MonoBehaviour {
     string npcsMessage = "NPCS|";
     foreach (int characterId in ConnectedCharacters.NPCs.Keys) {
       NPC npc = ConnectedCharacters.NPCs[characterId];
-      npcsMessage += characterId + "%" + npc.Name + "%" + npc.Avatar.transform.position.x + "%" +
-                     npc.Avatar.transform.position.y + "%" +
-                     npc.Avatar.transform.position.z + "%" + npc.Avatar.transform.rotation.eulerAngles.x + "%" +
-                     npc.Avatar.transform.rotation.eulerAngles.y + "%" +
-                     npc.Avatar.transform.rotation.eulerAngles.z + "%" + npc.CharacterPersonality + "%" + npc.DialogueId + "|";
+      npcsMessage += 
+        characterId + "%" + 
+        npc.CharacterName + "%" + 
+        npc.CharacterPersonality + "%" + 
+        npc.Avatar.transform.position.x + "%" +
+        npc.Avatar.transform.position.y + "%" +
+        npc.Avatar.transform.position.z + "%" + 
+        npc.Avatar.transform.rotation.eulerAngles.x + "%" +
+        npc.Avatar.transform.rotation.eulerAngles.y + "%" +
+        npc.Avatar.transform.rotation.eulerAngles.z + "%" + 
+        npc.MaxHealth + '%' + 
+        npc.CurrentHealth + '%' +
+        npc.MaxStamina + '%' + 
+        npc.CurrentStamina + '%' + 
+        npc.Gold + "%" +
+        npc.BaseWeight + "%" +
+        npc.BaseArmor + "%" +
+        npc.BaseDamage + "%" +
+        npc.WeaponId + '%' + 
+        npc.ApparelId + '%' + 
+        npc.DialogueId + "|";
     }
 
     npcsMessage = npcsMessage.Trim('|');
@@ -546,7 +608,7 @@ public class Server : MonoBehaviour {
 
   private void OnDisconnection(int characterId) {
     // Update players transform
-    StartCoroutine("SetStatsForUser", ConnectedCharacters.Players[characterId]);
+    StartCoroutine("SetStatsForPlayer", ConnectedCharacters.Players[characterId]);
     // Logout player
     StartCoroutine("Logout", characterId);
 
@@ -564,13 +626,13 @@ public class Server : MonoBehaviour {
     ConnectedCharacters.IdMap.Add(cnnId, characterId);
     // Link the name to the connection Id
     Player player = new ServerPlayer();
-    player.Name = name;
+    player.CharacterName = name;
     player.CharacterId = characterId;
     ConnectedCharacters.Players.Add(characterId, player);
     ConnectedCharacters.Characters.Add(characterId, player);
     
-    StartCoroutine("GetStatsForUser", characterId);
-    StartCoroutine("GetItemsForUser", characterId);
+    StartCoroutine("GetStatsForPlayer", characterId);
+    StartCoroutine("GetItemsForPlayer", characterId);
   }
 
   private void OnMyPosition(int characterId, float x, float y, float z, float rw, float rx, float ry, float rz, float time) {
@@ -659,16 +721,34 @@ public class Server : MonoBehaviour {
     int maxHealth, int currentHealth,
     int maxStamina, int currentStamina,
     int gold,
+    int baseWeight,
+    int baseDamage,
+    int baseArmor,
     int weaponId,
     int apparelId,
     int dialogueId
   ) {
-    NPC npc = new NPC();
-    npc.Name = characterName;
-    npc.Avatar.transform.position = new Vector3(px, py, pz);
-    npc.Avatar.transform.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
-    npc.CharacterPersonality = characterPersonality;
-    npc.DialogueId = dialogueId;
+    GameObject npcObject = new GameObject();
+    npcObject.transform.position = new Vector3(px, py, pz);
+    npcObject.transform.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
+    npcObject.name = characterName;
+    NPC npc = new NPC(
+      characterId,
+      characterName,
+      characterPersonality,
+      npcObject,
+      maxHealth,
+      currentHealth,
+      maxStamina,
+      currentStamina,
+      gold,
+      baseWeight,
+      baseDamage,
+      baseArmor,
+      weaponId,
+      apparelId,
+      dialogueId
+    );
     ConnectedCharacters.NPCs.Add(characterId, npc);
     ConnectedCharacters.Characters.Add(characterId, npc);
     StartCoroutine("GetItemsForCharacter", characterId);
