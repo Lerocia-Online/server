@@ -283,6 +283,7 @@ public class Server : MonoBehaviour {
         dbp.dialogue_id,
         reliableChannel, ConnectedCharacters.ConnectionIds
       );
+      StartCoroutine("GetItemsForPlayer", characterId);
     } else {
       Debug.Log(w.error);
     }
@@ -639,7 +640,6 @@ public class Server : MonoBehaviour {
     ConnectedCharacters.Characters.Add(characterId, player);
     
     StartCoroutine("GetStatsForPlayer", characterId);
-    StartCoroutine("GetItemsForPlayer", characterId);
   }
 
   private void OnMyPosition(int characterId, float x, float y, float z, float rw, float rx, float ry, float rz, float time) {
