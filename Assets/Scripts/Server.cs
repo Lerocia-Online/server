@@ -10,6 +10,7 @@ using Lerocia.Characters.NPCs;
 using Lerocia.Characters.Players;
 using Lerocia.Items;
 using Networking.Constants;
+using UnityEngine.AI;
 using Random = System.Random;
 
 class ServerPlayer : Player {
@@ -130,6 +131,13 @@ public class Server : MonoBehaviour {
   private string deleteWorldItemEndpoint = "delete_world_item.php";
   private string logoutEndpoint = "logout.php";
   private string logoutAllPlayersEndpoint = "logout_all_players.php";
+
+  [SerializeField]
+  private GameObject _playerPrefab;
+  [SerializeField]
+  private GameObject _npcPrefab;
+  [SerializeField]
+  private GameObject _itemPrefab;
 
   private void Awake() {
     StartCoroutine("LogoutAllPlayers");
@@ -516,18 +524,27 @@ public class Server : MonoBehaviour {
     if (Time.time - lastMovementUpdate > movementUpdateRate) {
       lastMovementUpdate = Time.time;
       string m = "ASKPOSITION|";
-      foreach (int charId in ConnectedCharacters.Players.Keys) {
-        Player player = ConnectedCharacters.Players[charId];
-        m += charId.ToString() + '%' + player.Avatar.transform.position.x.ToString() + '%' +
-             player.Avatar.transform.position.y.ToString() + '%' +
-             player.Avatar.transform.position.z.ToString() + '%' + player.Avatar.transform.rotation.w.ToString() + '%' +
-             player.Avatar.transform.rotation.x.ToString() + '%' +
-             player.Avatar.transform.rotation.y.ToString() + '%' + player.Avatar.transform.rotation.z.ToString() + '%' +
-             player.MoveTime.ToString() + '|';
+      foreach (NPC npc in ConnectedCharacters.NPCs.Values) {
+        npc.MoveTime = Time.time - npc.TimeBetweenMovementStart;
+      }
+      foreach (int charId in ConnectedCharacters.Characters.Keys) {
+        Character character = ConnectedCharacters.Characters[charId];
+        m += charId.ToString() + '%' + 
+             character.Avatar.transform.position.x + '%' +
+             character.Avatar.transform.position.y + '%' +
+             character.Avatar.transform.position.z + '%' + 
+             character.Avatar.transform.rotation.w + '%' +
+             character.Avatar.transform.rotation.x + '%' +
+             character.Avatar.transform.rotation.y + '%' + 
+             character.Avatar.transform.rotation.z + '%' +
+             character.MoveTime + '|';
       }
 
       m = m.Trim('|');
       Send(m, unreliableChannel, ConnectedCharacters.ConnectionIds);
+      foreach (NPC npc in ConnectedCharacters.NPCs.Values) {
+        npc.TimeBetweenMovementStart = Time.time;
+      }
     }
   }
 
@@ -636,6 +653,8 @@ public class Server : MonoBehaviour {
     Player player = new ServerPlayer();
     player.CharacterName = name;
     player.CharacterId = characterId;
+    player.Avatar = Instantiate(_playerPrefab);
+    player.Avatar.name = name;
     ConnectedCharacters.Players.Add(characterId, player);
     ConnectedCharacters.Characters.Add(characterId, player);
     
@@ -712,7 +731,7 @@ public class Server : MonoBehaviour {
   }
 
   private void AddWorldItem(int worldId, int itemId, float x, float y, float z, bool onStart = false) {
-    GameObject item = new GameObject();
+    GameObject item = Instantiate(_itemPrefab);
     item.AddComponent<ItemReference>();
     item.GetComponent<ItemReference>().WorldId = worldId;
     item.GetComponent<ItemReference>().ItemId = itemId;
@@ -745,10 +764,22 @@ public class Server : MonoBehaviour {
     int apparelId,
     int dialogueId
   ) {
-    GameObject npcObject = new GameObject();
-    npcObject.transform.position = new Vector3(px, py, pz);
-    npcObject.transform.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
+    GameObject npcObject = Instantiate(_npcPrefab);
     npcObject.name = characterName;
+    npcObject.GetComponent<NavMeshAgent>().Warp(new Vector3(px, py, pz));
+    npcObject.transform.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
+    npcObject.AddComponent<NPCController>();
+    if (characterPersonality == "friendly") {
+      npcObject.GetComponent<NPCController>().TargetTypes = new List<string> {"enemy"};
+    } else if (characterPersonality == "enemy") {
+      npcObject.GetComponent<NPCController>().TargetTypes = new List<string> {"friendly", "passive"};
+    } else if (characterPersonality == "passive") {
+      // Do nothing, passive does not target
+    } else {
+      Debug.Log("Invalid personality");
+    }
+    npcObject.AddComponent<CharacterReference>();
+    npcObject.GetComponent<CharacterReference>().CharacterId = characterId;
     NPC npc = new NPC(
       characterId,
       characterName,
@@ -766,6 +797,17 @@ public class Server : MonoBehaviour {
       apparelId,
       dialogueId
     );
+    if (npc.CharacterId == 4) {
+      npc.Destinations.Add(new Destination(new Vector3(-5, 0, 10), 3));
+      npc.Destinations.Add(new Destination(new Vector3(-5, 0, 20), 3));
+      npc.Destinations.Add(new Destination(new Vector3(5, 0, 20), 3));
+      npc.Destinations.Add(new Destination(new Vector3(5, 0, 10), 3));
+    } else if (npc.CharacterId == 5) {
+      npc.Destinations.Add(new Destination(new Vector3(-7, 0, 50), 0));
+      npc.Destinations.Add(new Destination(new Vector3(7, 0, 50), 0));
+    }
+
+    npcObject.GetComponent<NPCController>().Npc = npc;
     ConnectedCharacters.NPCs.Add(characterId, npc);
     ConnectedCharacters.Characters.Add(characterId, npc);
     StartCoroutine("GetItemsForCharacter", characterId);
