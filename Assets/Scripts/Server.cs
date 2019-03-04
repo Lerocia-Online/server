@@ -79,6 +79,14 @@ public class DatabaseItem {
 }
 
 [Serializable]
+public class DatabaseDestination {
+  public float position_x;
+  public float position_y;
+  public float position_z;
+  public float duration;
+}
+
+[Serializable]
 class DatabaseNPC {
   public int character_id;
   public int npc_id;
@@ -129,6 +137,7 @@ public class Server : MonoBehaviour {
   private string deleteItemForCharacterEndpoint = "delete_item_for_character.php";
   private string addWorldItemEndpoint = "add_world_item.php";
   private string deleteWorldItemEndpoint = "delete_world_item.php";
+  private string getDestinationsForNpcEndpoint = "get_destinations_for_npc.php";
   private string logoutEndpoint = "logout.php";
   private string logoutAllPlayersEndpoint = "logout_all_players.php";
 
@@ -419,6 +428,24 @@ public class Server : MonoBehaviour {
 
     if (string.IsNullOrEmpty(w.error)) {
       // Do nothing, deleted successfully
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+
+  private IEnumerator GetDestinationsForNPC(int characterId) {
+    form = new WWWForm();
+    form.AddField("character_id", characterId);
+    
+    WWW w = new WWW(NetworkConstants.Api + getDestinationsForNpcEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      string jsonString = JsonHelper.fixJson(w.text);
+      DatabaseDestination[] dbd = JsonHelper.FromJson<DatabaseDestination>(jsonString);
+      foreach (DatabaseDestination d in dbd) {
+        ConnectedCharacters.NPCs[characterId].Destinations.Add(new Destination(new Vector3(d.position_x, d.position_y, d.position_z), d.duration));
+      }
     } else {
       Debug.Log(w.error);
     }
@@ -797,20 +824,12 @@ public class Server : MonoBehaviour {
       apparelId,
       dialogueId
     );
-    if (npc.CharacterId == 4) {
-      npc.Destinations.Add(new Destination(new Vector3(-5, 0, 10), 3));
-      npc.Destinations.Add(new Destination(new Vector3(-5, 0, 20), 3));
-      npc.Destinations.Add(new Destination(new Vector3(5, 0, 20), 3));
-      npc.Destinations.Add(new Destination(new Vector3(5, 0, 10), 3));
-    } else if (npc.CharacterId == 5) {
-      npc.Destinations.Add(new Destination(new Vector3(-7, 0, 50), 0));
-      npc.Destinations.Add(new Destination(new Vector3(7, 0, 50), 0));
-    }
 
     npcObject.GetComponent<NPCController>().Npc = npc;
     ConnectedCharacters.NPCs.Add(characterId, npc);
     ConnectedCharacters.Characters.Add(characterId, npc);
     StartCoroutine("GetItemsForCharacter", characterId);
+    StartCoroutine("GetDestinationsForNPC", characterId);
   }
 
   private void Send(string message, int channelId, int connectionId) {
