@@ -663,6 +663,7 @@ public class Server : MonoBehaviour {
     StartCoroutine("Logout", characterId);
 
     // Remove this player from our client list
+    Destroy(ConnectedCharacters.Players[characterId].Avatar);
     ConnectedCharacters.Players.Remove(characterId);
     ConnectedCharacters.Characters.Remove(characterId);
     int connectionId;
