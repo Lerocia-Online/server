@@ -6,6 +6,7 @@ using System;
 using System.Collections;
 using System.ComponentModel;
 using Lerocia.Characters;
+using Lerocia.Characters.Bodies;
 using Lerocia.Characters.NPCs;
 using Lerocia.Characters.Players;
 using Lerocia.Items;
@@ -37,6 +38,8 @@ class ServerPlayer : Player {
     }
   }
 }
+
+//TODO Create ServerNPC class
 
 [Serializable]
 class DatabasePlayer {
@@ -111,6 +114,38 @@ class DatabaseNPC {
   public int dialogue_id;
 }
 
+[Serializable]
+class DatabaseBody {
+  public int character_id;
+  public int body_id;
+  public string character_name;
+  public string character_personality;
+  public float position_x;
+  public float position_y;
+  public float position_z;
+  public float rotation_x;
+  public float rotation_y;
+  public float rotation_z;
+  public int max_health;
+  public int current_health;
+  public int max_stamina;
+  public int current_stamina;
+  public int gold;
+  public int base_weight;
+  public int base_damage;
+  public int base_armor;
+  public int weapon_id;
+  public int apparel_id;
+  public int dialogue_id;
+}
+
+[Serializable]
+class DatabaseCreateBody {
+  public bool success;
+  public string error;
+  public int character_id;
+}
+
 public class Server : MonoBehaviour {
   private const int MAX_CONNECTION = 100;
 
@@ -130,9 +165,11 @@ public class Server : MonoBehaviour {
   private WWWForm form;
   private string getWorldItemsEndpoint = "get_world_items.php";
   private string getNPCsEndpoint = "get_npcs.php";
+  private string getBodiesEndpoint = "get_bodies.php";
   private string getItemsForCharacterEndpoint = "get_items_for_character.php";
   private string getStatsForCharacterEndpoint = "get_stats_for_character.php";
   private string setStatsForCharacterEndpoint = "set_stats_for_character.php";
+  private string createBodyEndpoint = "create_body.php";
   private string addItemForCharacterEndpoint = "add_item_for_character.php";
   private string deleteItemForCharacterEndpoint = "delete_item_for_character.php";
   private string addWorldItemEndpoint = "add_world_item.php";
@@ -147,6 +184,8 @@ public class Server : MonoBehaviour {
   private GameObject _npcPrefab;
   [SerializeField]
   private GameObject _itemPrefab;
+  [SerializeField]
+  private GameObject _bodyPrefab;
 
   private void Awake() {
     StartCoroutine("LogoutAllPlayers");
@@ -166,6 +205,7 @@ public class Server : MonoBehaviour {
     isStarted = true;
     StartCoroutine("GetWorldItems");
     StartCoroutine("GetNPCs");
+    StartCoroutine("GetBodies");
   }
 
   private IEnumerator GetNPCs() {
@@ -193,6 +233,38 @@ public class Server : MonoBehaviour {
           npc.weapon_id,
           npc.apparel_id,
           npc.dialogue_id
+        );
+      }
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+  
+  private IEnumerator GetBodies() {
+    form = new WWWForm();
+
+    WWW w = new WWW(NetworkConstants.Api + getBodiesEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      string jsonString = JsonHelper.fixJson(w.text);
+      DatabaseBody[] dbb = JsonHelper.FromJson<DatabaseBody>(jsonString);
+      foreach (DatabaseBody body in dbb) {
+        AddBody(
+          body.character_id, 
+          body.character_name, 
+          body.character_personality, 
+          body.position_x, body.position_y, body.position_z, 
+          body.rotation_x, body.rotation_y, body.rotation_z, 
+          body.max_health, body.current_health,
+          body.max_stamina, body.current_stamina,
+          body.gold,
+          body.base_weight,
+          body.base_damage,
+          body.base_armor,
+          body.weapon_id,
+          body.apparel_id,
+          body.dialogue_id
         );
       }
     } else {
@@ -338,6 +410,73 @@ public class Server : MonoBehaviour {
     }
   }
 
+  private IEnumerator CreateBody(Character character) {
+    form = new WWWForm();
+
+    form.AddField("character_name", character.CharacterName + " (Dead)");
+    form.AddField("character_personality", character.CharacterPersonality);
+    form.AddField("position_x", character.Avatar.transform.position.x.ToString());
+    form.AddField("position_y", character.Avatar.transform.position.y.ToString());
+    form.AddField("position_z", character.Avatar.transform.position.z.ToString());
+    form.AddField("rotation_x", character.Avatar.transform.eulerAngles.x.ToString());
+    form.AddField("rotation_y", character.Avatar.transform.eulerAngles.y.ToString());
+    form.AddField("rotation_z", character.Avatar.transform.eulerAngles.z.ToString());
+    form.AddField("max_health", character.MaxHealth);
+    form.AddField("current_health", character.CurrentHealth);
+    form.AddField("max_stamina", character.MaxStamina);
+    form.AddField("current_stamina", character.CurrentStamina); 
+    form.AddField("gold", character.Gold);
+    form.AddField("weapon_id", character.WeaponId);
+    form.AddField("apparel_id", character.ApparelId);
+    form.AddField("dialogue_id", character.DialogueId);
+
+    WWW w = new WWW(NetworkConstants.Api + createBodyEndpoint, form);
+    yield return w;
+
+    if (string.IsNullOrEmpty(w.error)) {
+      Debug.Log(w.text);
+      DatabaseCreateBody dbb = JsonUtility.FromJson<DatabaseCreateBody>(w.text);
+      if (ConnectedCharacters.Characters.ContainsKey(dbb.character_id)) {
+        Send("DESTROYBODY|" + dbb.character_id, reliableChannel, ConnectedCharacters.ConnectionIds);
+        Destroy(ConnectedCharacters.Characters[dbb.character_id].Avatar);
+        ConnectedCharacters.Characters.Remove(dbb.character_id);
+        ConnectedCharacters.Bodies.Remove(dbb.character_id);
+      }
+      GameObject bodyObject = Instantiate(_bodyPrefab);
+      bodyObject.name = character.CharacterName + " (Dead)";
+      bodyObject.transform.position = character.Avatar.transform.position;
+      Body body = new Body(
+        dbb.character_id, 
+        character.CharacterName, 
+        character.CharacterPersonality, 
+        bodyObject, 
+        character.MaxHealth, 
+        character.CurrentHealth, 
+        character.MaxStamina, 
+        character.CurrentStamina, 
+        character.Gold, 
+        character.BaseWeight,
+        character.BaseDamage, 
+        character.BaseArmor,
+        character.WeaponId,
+        character.ApparelId, 
+        character.DialogueId
+      );
+      body.Inventory.Clear();
+      ConnectedCharacters.Characters.Add(dbb.character_id, body);
+      ConnectedCharacters.Bodies.Add(dbb.character_id, body);
+      string deathMessage = "DEATH|" + character.CharacterId + "|" + dbb.character_id + "|";
+      foreach (int itemId in ConnectedCharacters.Characters[character.CharacterId].Inventory) {
+        ConnectedCharacters.Characters[dbb.character_id].Inventory.Add(itemId);
+        deathMessage += itemId + "|";
+      }
+      deathMessage = deathMessage.Trim('|');
+      Send(deathMessage, reliableChannel, ConnectedCharacters.ConnectionIds);
+    } else {
+      Debug.Log(w.error);
+    }
+  }
+
   private IEnumerator GetItemsForCharacter(int characterId) {
     form = new WWWForm();
 
@@ -358,7 +497,6 @@ public class Server : MonoBehaviour {
   }
 
   private IEnumerator AddItemForPlayer(int[] args) {
-    Debug.Log("Calling add item for character");
     form = new WWWForm();
     int characterId = args[0];
     int itemId = args[1];
@@ -377,7 +515,6 @@ public class Server : MonoBehaviour {
   }
 
   private IEnumerator DeleteItemForPlayer(int[] args) {
-    Debug.Log("Calling delete item for character");
     form = new WWWForm();
     int characterId = args[0];
     int itemId = args[1];
@@ -517,9 +654,6 @@ public class Server : MonoBehaviour {
           case "HIT":
             OnHit(characterId, int.Parse(splitData[1]), int.Parse(splitData[2]));
             break;
-          case "HITNPC":
-            OnHitNPC(characterId, int.Parse(splitData[1]), int.Parse(splitData[2]));
-            break;
           case "USE":
             OnUse(characterId, int.Parse(splitData[1]));
             break;
@@ -557,13 +691,13 @@ public class Server : MonoBehaviour {
       foreach (int charId in ConnectedCharacters.Characters.Keys) {
         Character character = ConnectedCharacters.Characters[charId];
         m += charId.ToString() + '%' + 
-             character.Avatar.transform.position.x + '%' +
-             character.Avatar.transform.position.y + '%' +
-             character.Avatar.transform.position.z + '%' + 
-             character.Avatar.transform.rotation.w + '%' +
-             character.Avatar.transform.rotation.x + '%' +
-             character.Avatar.transform.rotation.y + '%' + 
-             character.Avatar.transform.rotation.z + '%' +
+             Math.Round(character.Avatar.transform.position.x, 2) + '%' +
+             Math.Round(character.Avatar.transform.position.y, 2) + '%' +
+             Math.Round(character.Avatar.transform.position.z, 2) + '%' + 
+             Math.Round(character.Avatar.transform.rotation.w, 2) + '%' +
+             Math.Round(character.Avatar.transform.rotation.x, 2) + '%' +
+             Math.Round(character.Avatar.transform.rotation.y, 2) + '%' + 
+             Math.Round(character.Avatar.transform.rotation.z, 2) + '%' +
              character.MoveTime + '|';
       }
 
@@ -614,8 +748,8 @@ public class Server : MonoBehaviour {
     string itemsMessage = "ITEMS|";
     foreach (GameObject item in ItemList.WorldItems.Values) {
       itemsMessage += item.GetComponent<ItemReference>().WorldId + "%" + item.GetComponent<ItemReference>().ItemId +
-                      "%" + item.transform.position.x + "%" + item.transform.position.y + "%" +
-                      item.transform.position.z + "|";
+                      "%" + Math.Round(item.transform.position.x, 2) + "%" + Math.Round(item.transform.position.y, 2) + "%" +
+                      Math.Round(item.transform.position.z, 2) + "|";
     }
 
     itemsMessage = itemsMessage.Trim('|');
@@ -631,12 +765,12 @@ public class Server : MonoBehaviour {
         characterId + "%" + 
         npc.CharacterName + "%" + 
         npc.CharacterPersonality + "%" + 
-        npc.Avatar.transform.position.x + "%" +
-        npc.Avatar.transform.position.y + "%" +
-        npc.Avatar.transform.position.z + "%" + 
-        npc.Avatar.transform.rotation.eulerAngles.x + "%" +
-        npc.Avatar.transform.rotation.eulerAngles.y + "%" +
-        npc.Avatar.transform.rotation.eulerAngles.z + "%" + 
+        Math.Round(npc.Avatar.transform.position.x, 2) + "%" +
+        Math.Round(npc.Avatar.transform.position.y, 2) + "%" +
+        Math.Round(npc.Avatar.transform.position.z, 2) + "%" + 
+        Math.Round(npc.Avatar.transform.rotation.eulerAngles.x, 2) + "%" +
+        Math.Round(npc.Avatar.transform.rotation.eulerAngles.y, 2) + "%" +
+        Math.Round(npc.Avatar.transform.rotation.eulerAngles.z, 2) + "%" + 
         npc.MaxHealth + '%' + 
         npc.CurrentHealth + '%' +
         npc.MaxStamina + '%' + 
@@ -654,6 +788,44 @@ public class Server : MonoBehaviour {
 
     // NPCS|0%Harold|1%Johnny|2%Michelle
     Send(npcsMessage, reliableChannel, connectionId);
+    
+    // Send all Bodies in the world
+    string bodiesMessage = "BODIES|";
+    foreach (int characterId in ConnectedCharacters.Bodies.Keys) {
+      Body body = ConnectedCharacters.Bodies[characterId];
+      bodiesMessage += 
+        characterId + "%" + 
+        body.CharacterName + "%" + 
+        body.CharacterPersonality + "%" + 
+        Math.Round(body.Avatar.transform.position.x, 2) + "%" +
+        Math.Round(body.Avatar.transform.position.y, 2) + "%" +
+        Math.Round(body.Avatar.transform.position.z, 2) + "%" + 
+        Math.Round(body.Avatar.transform.rotation.eulerAngles.x, 2) + "%" +
+        Math.Round(body.Avatar.transform.rotation.eulerAngles.y, 2) + "%" +
+        Math.Round(body.Avatar.transform.rotation.eulerAngles.z, 2) + "%" + 
+        body.MaxHealth + '%' + 
+        body.CurrentHealth + '%' +
+        body.MaxStamina + '%' + 
+        body.CurrentStamina + '%' + 
+        body.Gold + "%" +
+        body.BaseWeight + "%" +
+        body.BaseArmor + "%" +
+        body.BaseDamage + "%" +
+        body.WeaponId + '%' + 
+        body.ApparelId + '%' + 
+        body.DialogueId + "%";
+      foreach (int itemId in body.Inventory) {
+        bodiesMessage += itemId + "%";
+      }
+
+      bodiesMessage = bodiesMessage.Trim('%');
+      bodiesMessage += '|';
+    }
+
+    bodiesMessage = bodiesMessage.Trim('|');
+
+    // NPCS|0%Harold|1%Johnny|2%Michelle
+    Send(bodiesMessage, reliableChannel, connectionId);
   }
 
   private void OnDisconnection(int characterId) {
@@ -701,15 +873,15 @@ public class Server : MonoBehaviour {
   }
 
   private void OnHit(int characterId, int hitId, int damage) {
-    //TODO Remove health from client on server
-    string msg = "HIT|" + characterId + "|" + hitId + "|" + damage;
-    Send(msg, reliableChannel, ConnectedCharacters.ConnectionIds);
-  }
-
-  private void OnHitNPC(int characterId, int hitId, int damage) {
-    //TODO Remove health from NPC on server
-    string msg = "HITNPC|" + characterId + "|" + hitId + "|" + damage;
-    Send(msg, reliableChannel, ConnectedCharacters.ConnectionIds);
+    // Subtract characters health based on damage
+    ConnectedCharacters.Characters[hitId].TakeDamage(damage);
+    // Tell clients a character has been hit
+    string hitMessage = "HIT|" + characterId + "|" + hitId + "|" + damage;
+    Send(hitMessage, reliableChannel, ConnectedCharacters.ConnectionIds);
+    if (ConnectedCharacters.Characters[hitId].CurrentHealth <= 0) {
+      // Character has died, create body of character
+      StartCoroutine("CreateBody", ConnectedCharacters.Characters[hitId]);
+    }
   }
 
   private void OnUse(int characterId, int itemId) {
@@ -831,6 +1003,51 @@ public class Server : MonoBehaviour {
     ConnectedCharacters.Characters.Add(characterId, npc);
     StartCoroutine("GetItemsForCharacter", characterId);
     StartCoroutine("GetDestinationsForNPC", characterId);
+  }
+  
+  private void AddBody(
+    int characterId, 
+    string characterName, 
+    string characterPersonality, 
+    float px, float py, float pz, 
+    float rx, float ry, float rz,
+    int maxHealth, int currentHealth,
+    int maxStamina, int currentStamina,
+    int gold,
+    int baseWeight,
+    int baseDamage,
+    int baseArmor,
+    int weaponId,
+    int apparelId,
+    int dialogueId
+  ) {
+    GameObject bodyObject = Instantiate(_bodyPrefab);
+    bodyObject.name = characterName;
+    bodyObject.transform.position = new Vector3(px, py, pz);
+    bodyObject.transform.rotation = Quaternion.Euler(new Vector3(rx, ry, rz));
+    bodyObject.AddComponent<CharacterReference>();
+    bodyObject.GetComponent<CharacterReference>().CharacterId = characterId;
+    Body body = new Body(
+      characterId,
+      characterName,
+      characterPersonality,
+      bodyObject,
+      maxHealth,
+      currentHealth,
+      maxStamina,
+      currentStamina,
+      gold,
+      baseWeight,
+      baseDamage,
+      baseArmor,
+      weaponId,
+      apparelId,
+      dialogueId
+    );
+
+    ConnectedCharacters.Characters.Add(characterId, body);
+    ConnectedCharacters.Bodies.Add(characterId, body);
+    StartCoroutine("GetItemsForCharacter", characterId);
   }
 
   private void Send(string message, int channelId, int connectionId) {
