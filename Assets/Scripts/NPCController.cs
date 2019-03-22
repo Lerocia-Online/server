@@ -7,7 +7,6 @@ using System.Linq;
 
 public class NPCController : MonoBehaviour {
   public NPC Npc;
-  private float _lookRadius = 10f;
   private Transform _target;
   private NavMeshAgent _agent;
   public List<string> TargetTypes;
@@ -37,7 +36,7 @@ public class NPCController : MonoBehaviour {
       if (TargetTypes.Contains(character.CharacterPersonality)) {
         float distance = Vector3.Distance(character.Avatar.transform.position, transform.position);
 
-        if (distance < _lookRadius && distance < closestDistance) {
+        if (distance < Npc.LookRadius && distance < closestDistance) {
           closestDistance = distance;
           foundTarget = true;
           _target = character.Avatar.transform;
@@ -94,6 +93,6 @@ public class NPCController : MonoBehaviour {
 
   private void OnDrawGizmosSelected() {
     Gizmos.color = Color.red;
-    Gizmos.DrawWireSphere(transform.position, _lookRadius);
+    Gizmos.DrawWireSphere(transform.position, Npc.LookRadius);
   }
 }
