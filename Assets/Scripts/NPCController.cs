@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
@@ -13,10 +14,14 @@ public class NPCController : MonoBehaviour {
   private int _destinationIndex;
   private bool _destinationReached;
   private float _destinationReachedTime;
+  private Server _server;
+  private bool _canAttack;
 
   private void Start() {
     _agent = GetComponent<NavMeshAgent>();
     _destinationIndex = 0;
+    _server = GameObject.Find("Server").GetComponent<Server>();
+    _canAttack = true;
   }
 
   private void Update() {
@@ -33,7 +38,7 @@ public class NPCController : MonoBehaviour {
     float closestDistance = float.MaxValue;
     bool foundTarget = false;
     foreach (Character character in ConnectedCharacters.Characters.Values) {
-      if (TargetTypes.Contains(character.CharacterPersonality)) {
+      if (TargetTypes.Contains(character.CharacterPersonality) && !character.Avatar.transform.CompareTag("Body")) {
         float distance = Vector3.Distance(character.Avatar.transform.position, transform.position);
 
         if (distance < Npc.LookRadius && distance < closestDistance) {
@@ -47,12 +52,30 @@ public class NPCController : MonoBehaviour {
     if (foundTarget) {
       _agent.SetDestination(_target.position);
       if (closestDistance <= _agent.stoppingDistance) {
-        //TODO Attack target
         FaceTarget();
+        if (_canAttack) {
+          _canAttack = false;
+          StartCoroutine("Attack");
+        }
       }
     } else {
       _target = null;
     }
+  }
+  
+  private IEnumerator Attack() {
+    _server.SendReliable("ATK|" + Npc.CharacterId);
+    yield return new WaitForSeconds(0.5f);
+    RaycastHit hit;
+    if (Physics.Raycast(gameObject.transform.position, transform.forward, out hit, 2)) {
+      if (hit.transform.CompareTag("Player") || hit.transform.CompareTag("NPC")) {
+        _server.OnHit(Npc.CharacterId, hit.transform.gameObject.GetComponent<CharacterReference>().CharacterId, Npc.Damage);
+      }
+    }
+    
+    yield return new WaitForSeconds(1.5f);
+
+    _canAttack = true;
   }
 
   private void SetWanderDestination() {
