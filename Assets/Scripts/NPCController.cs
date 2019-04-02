@@ -33,14 +33,14 @@ public class NPCController : MonoBehaviour {
       SetWanderDestination();
     }
 
-    Debug.DrawRay(gameObject.transform.position, transform.forward * 5, Color.red);
+    Debug.DrawRay(gameObject.transform.position, transform.forward * 2, Color.red);
   }
 
   private void TryToFindTarget() {
     float closestDistance = float.MaxValue;
     bool foundTarget = false;
     foreach (Character character in ConnectedCharacters.Characters.Values) {
-      if (TargetTypes.Contains(character.CharacterPersonality)) {
+      if (TargetTypes.Contains(character.CharacterPersonality) && !character.Avatar.transform.CompareTag("Body")) {
         float distance = Vector3.Distance(character.Avatar.transform.position, transform.position);
 
         if (distance < Npc.LookRadius && distance < closestDistance) {
@@ -68,10 +68,10 @@ public class NPCController : MonoBehaviour {
   private IEnumerator Attack() {
     Debug.Log("Attacking");
     _server.SendReliable("ATK|" + Npc.CharacterId);
-    yield return new WaitForSeconds(1);
+    yield return new WaitForSeconds(0.5f);
     Debug.Log("Did I hit something?");
     RaycastHit hit;
-    if (Physics.Raycast(gameObject.transform.position, transform.forward, out hit, 5)) {
+    if (Physics.Raycast(gameObject.transform.position, transform.forward, out hit, 2)) {
       if (hit.transform.CompareTag("Player") || hit.transform.CompareTag("NPC")) {
         Debug.Log("NPC has hit a " + hit.transform.tag);
         _server.OnHit(Npc.CharacterId, hit.transform.gameObject.GetComponent<CharacterReference>().CharacterId, Npc.Damage);
@@ -81,6 +81,8 @@ public class NPCController : MonoBehaviour {
     } else {
       Debug.Log("I hit nothing");
     }
+    
+    yield return new WaitForSeconds(1.5f);
 
     _canAttack = true;
   }
