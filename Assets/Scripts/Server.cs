@@ -924,6 +924,8 @@ public class Server : MonoBehaviour {
     player.CharacterId = characterId;
     player.Avatar = Instantiate(_playerPrefab);
     player.Avatar.name = name;
+    player.Avatar.AddComponent<CharacterReference>();
+    player.Avatar.GetComponent<CharacterReference>().CharacterId = characterId;
     ConnectedCharacters.Players.Add(characterId, player);
     ConnectedCharacters.Characters.Add(characterId, player);
 
@@ -942,7 +944,7 @@ public class Server : MonoBehaviour {
     Send(msg, reliableChannel, ConnectedCharacters.ConnectionIds);
   }
 
-  private void OnHit(int characterId, int hitId, int damage) {
+  public void OnHit(int characterId, int hitId, int damage) {
     // Subtract characters health based on damage
     ConnectedCharacters.Characters[hitId].TakeDamage(damage);
     // Tell clients a character has been hit
@@ -1140,6 +1142,10 @@ public class Server : MonoBehaviour {
     ConnectedCharacters.Characters.Add(characterId, body);
     ConnectedCharacters.Bodies.Add(characterId, body);
     StartCoroutine("GetItemsForCharacter", characterId);
+  }
+
+  public void SendReliable(string message) {
+    Send(message, reliableChannel, ConnectedCharacters.ConnectionIds);
   }
 
   private void Send(string message, int channelId, int connectionId) {

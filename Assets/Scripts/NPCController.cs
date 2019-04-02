@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.AI;
@@ -13,10 +14,14 @@ public class NPCController : MonoBehaviour {
   private int _destinationIndex;
   private bool _destinationReached;
   private float _destinationReachedTime;
+  private Server _server;
+  private bool _canAttack;
 
   private void Start() {
     _agent = GetComponent<NavMeshAgent>();
     _destinationIndex = 0;
+    _server = GameObject.Find("Server").GetComponent<Server>();
+    _canAttack = true;
   }
 
   private void Update() {
@@ -27,6 +32,8 @@ public class NPCController : MonoBehaviour {
     if (_target == null) {
       SetWanderDestination();
     }
+
+    Debug.DrawRay(gameObject.transform.position, transform.forward * 5, Color.red);
   }
 
   private void TryToFindTarget() {
@@ -47,12 +54,35 @@ public class NPCController : MonoBehaviour {
     if (foundTarget) {
       _agent.SetDestination(_target.position);
       if (closestDistance <= _agent.stoppingDistance) {
-        //TODO Attack target
         FaceTarget();
+        if (_canAttack) {
+          _canAttack = false;
+          StartCoroutine("Attack");
+        }
       }
     } else {
       _target = null;
     }
+  }
+  
+  private IEnumerator Attack() {
+    Debug.Log("Attacking");
+    _server.SendReliable("ATK|" + Npc.CharacterId);
+    yield return new WaitForSeconds(1);
+    Debug.Log("Did I hit something?");
+    RaycastHit hit;
+    if (Physics.Raycast(gameObject.transform.position, transform.forward, out hit, 5)) {
+      if (hit.transform.CompareTag("Player") || hit.transform.CompareTag("NPC")) {
+        Debug.Log("NPC has hit a " + hit.transform.tag);
+        _server.OnHit(Npc.CharacterId, hit.transform.gameObject.GetComponent<CharacterReference>().CharacterId, Npc.Damage);
+      } else {
+        Debug.Log("I hit something, it just wasn't a player");
+      }
+    } else {
+      Debug.Log("I hit nothing");
+    }
+
+    _canAttack = true;
   }
 
   private void SetWanderDestination() {
