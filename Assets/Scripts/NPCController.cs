@@ -32,8 +32,6 @@ public class NPCController : MonoBehaviour {
     if (_target == null) {
       SetWanderDestination();
     }
-
-    Debug.DrawRay(gameObject.transform.position, transform.forward * 2, Color.red);
   }
 
   private void TryToFindTarget() {
@@ -66,20 +64,13 @@ public class NPCController : MonoBehaviour {
   }
   
   private IEnumerator Attack() {
-    Debug.Log("Attacking");
     _server.SendReliable("ATK|" + Npc.CharacterId);
     yield return new WaitForSeconds(0.5f);
-    Debug.Log("Did I hit something?");
     RaycastHit hit;
     if (Physics.Raycast(gameObject.transform.position, transform.forward, out hit, 2)) {
       if (hit.transform.CompareTag("Player") || hit.transform.CompareTag("NPC")) {
-        Debug.Log("NPC has hit a " + hit.transform.tag);
         _server.OnHit(Npc.CharacterId, hit.transform.gameObject.GetComponent<CharacterReference>().CharacterId, Npc.Damage);
-      } else {
-        Debug.Log("I hit something, it just wasn't a player");
       }
-    } else {
-      Debug.Log("I hit nothing");
     }
     
     yield return new WaitForSeconds(1.5f);
